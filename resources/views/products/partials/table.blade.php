@@ -1,129 +1,121 @@
+{{-- resources/views/products/partials/table.blade.php --}}
+
 <div class="table-responsive">
-    <table class="table table-hover table-bordered">
+    <table class="table table-hover align-middle">
         <thead class="table-light">
             <tr>
-                <th>ID</th>
-                <th>Código</th>
-                <th>Nombre</th>
+                <th width="50">ID</th>
+                <th>Nombre/Código</th>
+                <th>Equivalencias</th>
                 <th>Descripción</th>
-                <th>Precio Costo</th>
                 <th>Precio Venta</th>
                 <th>Stock</th>
-                <th>Stock Mínimo</th>
-                <th>Ubicación</th>
-                <th>Imagen</th>
-                <th>Acciones</th>
+                <th width="120">Acciones</th>
             </tr>
         </thead>
         <tbody>
             @forelse($products as $product)
                 <tr>
                     <td>{{ $product->id }}</td>
-                    <td>{{ $product->code ?? '—' }}</td>
-                    <td>{{ $product->name }}</td>
-                    <td>{{ $product->description }}</td>
-                    <td class="text-end">$ {{ number_format($product->cost_price, 2) }}</td>
-                    <td class="text-end">$ {{ number_format($product->sale_price, 2) }}</td>
+                    <td>
+                        <strong>{{ $product->name }}</strong>
+                        @if($product->code)
+                            <br>
+                            <small class="text-muted">Código: {{ $product->code }}</small>
+                        @endif
+                    </td>
+                    <td>
+                        @if($product->equivalents->count())
+                            <div class="d-flex flex-wrap gap-1">
+                                @foreach($product->equivalents as $equivalent)
+                                    <span class="badge bg-info text-dark">
+                                        {{ $equivalent->equivalent_code }}
+                                    </span>
+                                @endforeach
+                            </div>
+                        @else
+                            <span class="text-muted small">Sin equivalentes</span>
+                        @endif
+                    </td>
+                    <td>{{ $product->description ?? '—' }}</td>
+                    <td class="text-success fw-bold">$ {{ number_format($product->sale_price, 2) }}</td>
                     <td>
                         @if($product->stock <= 0)
                             <span class="badge bg-danger">Agotado</span>
                         @elseif($product->stock <= $product->min_stock)
-                            <span class="badge bg-warning text-dark">{{ $product->stock }}</span>
+                            <span class="badge bg-warning">{{ $product->stock }}</span>
                         @else
                             <span class="badge bg-success">{{ $product->stock }}</span>
                         @endif
                     </td>
-                    <td class="text-center">{{ $product->min_stock ?? 0 }}</td>
-                    <td>{{ $product->location ?? '—' }}</td>
                     <td>
-                        @if($product->image_path)
-                            <img src="{{ asset('storage/' . $product->image_path) }}" 
-                                 alt="{{ $product->name }}" 
-                                 style="width: 40px; height: 40px; object-fit: cover;"
-                                 class="rounded">
-                        @else
-                            <i class="fas fa-box fa-2x text-muted"></i>
-                        @endif
-                    </td>
-                    <td>
-                        <div class="btn-group" role="group">
+                        <div class="btn-group btn-group-sm">
                             <a href="{{ route('products.show', $product) }}" 
-                               class="btn btn-sm btn-info" 
+                               class="btn btn-info" 
                                title="Ver">
                                 <i class="fas fa-eye"></i>
                             </a>
                             <a href="{{ route('products.edit', $product) }}" 
-                               class="btn btn-sm btn-warning" 
+                               class="btn btn-warning" 
                                title="Editar">
                                 <i class="fas fa-edit"></i>
                             </a>
                             <button type="button" 
-                                    class="btn btn-sm btn-danger" 
+                                    class="btn btn-danger" 
                                     title="Eliminar"
-                                    data-bs-toggle="modal" 
-                                    data-bs-target="#deleteModal{{ $product->id }}">
+                                    onclick="confirmDelete({{ $product->id }}, '{{ $product->name }}')">
                                 <i class="fas fa-trash"></i>
                             </button>
                         </div>
-
-                        <!-- Modal Eliminar -->
-                        <div class="modal fade" id="deleteModal{{ $product->id }}" tabindex="-1">
-                            <div class="modal-dialog">
-                                <div class="modal-content">
-                                    <div class="modal-header">
-                                        <h5 class="modal-title">Confirmar eliminación</h5>
-                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                                    </div>
-                                    <div class="modal-body">
-                                        ¿Está seguro que desea eliminar el producto <strong>{{ $product->name }}</strong>?
-                                    </div>
-                                    <div class="modal-footer">
-                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                                        <form action="{{ route('products.destroy', $product) }}" method="POST">
-                                            @csrf
-                                            @method('DELETE')
-                                            <button type="submit" class="btn btn-danger">Eliminar</button>
-                                        </form>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                        
+                        <form id="delete-form-{{ $product->id }}" 
+                              action="{{ route('products.destroy', $product) }}" 
+                              method="POST" 
+                              style="display: none;">
+                            @csrf
+                            @method('DELETE')
+                        </form>
                     </td>
                 </tr>
             @empty
                 <tr>
-                    <td colspan="11" class="text-center py-4">
-                        <i class="fas fa-box-open fa-3x text-muted mb-3 d-block"></i>
-                        <p class="mb-0">No se encontraron productos</p>
+                    <td colspan="8" class="text-center py-4">
+                        <i class="fas fa-box-open fa-3x text-muted mb-2 d-block"></i>
+                        <p class="text-muted mb-0">No se encontraron productos</p>
                     </td>
                 </tr>
             @endforelse
         </tbody>
     </table>
-</div>
-
-<!-- Paginación -->
-@if($products->hasPages())
-    <div class="d-flex justify-content-between align-items-center mt-4 flex-wrap gap-3">
-        <div class="d-flex align-items-center gap-2">
-            <small class="text-muted">
-                Mostrando {{ $products->firstItem() ?? 0 }} a {{ $products->lastItem() ?? 0 }} 
-                de {{ $products->total() }} productos
-            </small>
-            
-            <div class="ms-3 d-flex align-items-center gap-2">
-                <label class="text-muted small mb-0">Mostrar:</label>
-                <select id="perPageSelect" class="form-select form-select-sm" style="width: auto;">
-                    <option value="10" {{ request('per_page', 10) == 10 ? 'selected' : '' }}>10</option>
-                    <option value="25" {{ request('per_page') == 25 ? 'selected' : '' }}>25</option>
-                    <option value="50" {{ request('per_page') == 50 ? 'selected' : '' }}>50</option>
-                    <option value="100" {{ request('per_page') == 100 ? 'selected' : '' }}>100</option>
-                </select>
-                <small class="text-muted">por página</small>
-            </div>
+    
+    <div class="d-flex justify-content-between align-items-center mt-3">
+        <div>
+            <label class="text-muted small">Mostrar</label>
+            <select id="perPageSelect" class="form-select form-select-sm d-inline-block w-auto">
+                <option value="10" {{ $products->perPage() == 10 ? 'selected' : '' }}>10</option>
+                <option value="25" {{ $products->perPage() == 25 ? 'selected' : '' }}>25</option>
+                <option value="50" {{ $products->perPage() == 50 ? 'selected' : '' }}>50</option>
+                <option value="100" {{ $products->perPage() == 100 ? 'selected' : '' }}>100</option>
+            </select>
+            <span class="text-muted small">registros por página</span>
         </div>
         <div>
             {{ $products->appends(request()->query())->links() }}
         </div>
     </div>
-@endif
+</div>
+
+<script>
+function confirmDelete(id, name) {
+    if (confirm(`¿Estás seguro de eliminar el producto "${name}"?\n\nEsta acción eliminará también todas sus equivalencias.`)) {
+        document.getElementById(`delete-form-${id}`).submit();
+    }
+}
+
+// Actualizar el valor de per_page en los enlaces de paginación
+$('#perPageSelect').on('change', function() {
+    const currentUrl = new URL(window.location.href);
+    currentUrl.searchParams.set('per_page', $(this).val());
+    window.location.href = currentUrl.toString();
+});
+</script>

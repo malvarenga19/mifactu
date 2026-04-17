@@ -78,6 +78,37 @@
                                 <div class="invalid-feedback">{{ $message }}</div>
                             @enderror
                         </div>
+                        {{-- En edit.blade.php, agrega después del campo location --}}
+
+                        <div class="mb-3">
+                            <label class="form-label">Códigos Equivalentes</label>
+                            <div id="equivalentsContainer">
+                                @if($product->equivalents->count())
+                                    @foreach($product->equivalents as $index => $equivalent)
+                                        <div class="input-group mb-2 equivalent-row">
+                                            <input type="text" name="equivalent_codes[]" class="form-control"
+                                                value="{{ $equivalent->equivalent_code }}" placeholder="Código equivalente">
+                                            <button type="button" class="btn btn-outline-danger remove-equivalent">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </div>
+                                    @endforeach
+                                @else
+                                    <div class="input-group mb-2 equivalent-row">
+                                        <input type="text" name="equivalent_codes[]" class="form-control"
+                                            placeholder="Código equivalente">
+                                        <button type="button" class="btn btn-outline-danger remove-equivalent"
+                                            style="display: none;">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </div>
+                                @endif
+                            </div>
+                            <button type="button" id="addEquivalent" class="btn btn-sm btn-outline-primary">
+                                <i class="fas fa-plus"></i> Agregar otro código equivalente
+                            </button>
+                            <small class="text-muted d-block mt-1">Códigos alternativos para buscar este producto</small>
+                        </div>
                     </div>
 
                     <div class="col-md-6">
@@ -210,6 +241,45 @@
         });
         document.getElementById('image_path').addEventListener('change', function () {
             document.getElementById('remove_image').checked = false;
+        });
+    </script>
+    <script>
+        // Agregar al script existente
+        $('#addEquivalent').click(function () {
+            const newRow = `
+                <div class="input-group mb-2 equivalent-row">
+                    <input type="text" 
+                           name="equivalent_codes[]" 
+                           class="form-control" 
+                           placeholder="Código equivalente">
+                    <button type="button" class="btn btn-outline-danger remove-equivalent">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            `;
+            $('#equivalentsContainer').append(newRow);
+        });
+
+        $(document).on('click', '.remove-equivalent', function () {
+            $(this).closest('.equivalent-row').remove();
+        });
+
+        // Mostrar botón de eliminar si hay más de un equivalente
+        if ($('.equivalent-row').length > 1) {
+            $('.remove-equivalent').show();
+        } else {
+            $('.remove-equivalent').first().hide();
+        }
+
+        // Actualizar visibilidad de botones al agregar/eliminar
+        $(document).on('click', '#addEquivalent, .remove-equivalent', function () {
+            setTimeout(() => {
+                if ($('.equivalent-row').length > 1) {
+                    $('.remove-equivalent').show();
+                } else {
+                    $('.remove-equivalent').hide();
+                }
+            }, 100);
         });
     </script>
 

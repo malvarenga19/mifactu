@@ -34,4 +34,9 @@ class Product extends Model
     {
         return $this->hasMany(ProductEquivalent::class);
     }
+
+    public function inventoryMovements()
+    {
+        return $this->hasMany(InventoryMovement::class);
+    }
 }
