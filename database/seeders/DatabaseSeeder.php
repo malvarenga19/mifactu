@@ -23,6 +23,9 @@ class DatabaseSeeder extends Seeder
 
         $this->call([
             CountrySeeder::class,
+            DepartmentSeeder::class,
+            MunicipalitySeeder::class,
+            EconomicActivitySeeder::class,
         ]);
     }
 }

@@ -29,4 +29,9 @@ class Product extends Model
     {
         return $this->belongsTo(Supplier::class);
     }
+
+    public function equivalents()
+    {
+        return $this->hasMany(ProductEquivalent::class);
+    }
 }
