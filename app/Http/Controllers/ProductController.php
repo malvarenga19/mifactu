@@ -19,7 +19,7 @@ class ProductController extends Controller
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
                     ->orWhere('code', 'like', "%{$search}%")
-                    ->orWhere('description', 'like', "%{$search}%")  
+                    ->orWhere('description', 'like', "%{$search}%")
                     ->orWhereHas('equivalents', function ($q2) use ($search) {
                         $q2->where('equivalent_code', 'like', "%{$search}%");
                     });
@@ -185,4 +185,5 @@ class ProductController extends Controller
         return redirect()->route('products.index')
             ->with('success', 'Producto eliminado exitosamente.');
     }
+
 }

@@ -7,6 +7,7 @@ use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\InventoryMovementController;
+use App\Http\Controllers\InvoiceController;
 
 Route::get('/', function () {
     return view('welcome');
@@ -25,6 +26,7 @@ Route::middleware('auth')->group(function () {
     Route::resource('categories', CategoryController::class);
     Route::resource('products', ProductController::class);
     Route::resource('inventory_movements', InventoryMovementController::class)->except(['edit', 'update', 'destroy']);
+    Route::resource('invoices', InvoiceController::class);
 });
 
 require __DIR__.'/auth.php';

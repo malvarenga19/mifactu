@@ -48,4 +48,9 @@ class Customer extends Model
 
         return $types[$this->document] ?? $this->document ?? 'N/A';
     }
+
+    public function invoices()
+    {
+        return $this->hasMany(Invoice::class);
+    }
 }

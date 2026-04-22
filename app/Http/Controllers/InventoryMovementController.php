@@ -31,17 +31,16 @@ class InventoryMovementController extends Controller
 
         // Filtro por fechas
         if ($request->filled('date_from')) {
-            $query->whereDate('created_at', '>=', $request->date_from);
+            $query->where('created_at', '>=', $request->date_from.' 00:00:00');
         }
 
         if ($request->filled('date_to')) {
-            $query->whereDate('created_at', '<=', $request->date_to);
+            $query->where('created_at', '<=', $request->date_to.' 23:59:59');
         }
 
         // Paginación
         $movements = $query->orderBy('id', 'desc')->paginate(20);
 
-        
         if ($request->ajax()) {
             return view('inventory_movements.partials.table', compact('movements'))->render();
         }

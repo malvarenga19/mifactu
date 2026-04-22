@@ -39,4 +39,9 @@ class Product extends Model
     {
         return $this->hasMany(InventoryMovement::class);
     }
+
+    public function invoiceItems()
+    {
+        return $this->hasMany(InvoiceItem::class);
+    }
 }
