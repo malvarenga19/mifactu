@@ -2,84 +2,67 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Customer;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\InvoiceType;
-use App\Models\InventoryMovement;
+use App\Models\Customer;
 use App\Models\Product;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB;
 
 class InvoiceController extends Controller
 {
-    /**
-     * Listado de facturas con filtros y paginación.
-     */
     public function index(Request $request)
     {
         $query = Invoice::with(['customer', 'invoiceType'])
-            ->orderBy('id', 'desc');
+            ->orderByDesc('issue_date')
+            ->orderByDesc('id');
 
-        // Filtro búsqueda por correlativo, código de generación o cliente
         if ($request->filled('search')) {
-            $search = $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->where('correlative', 'like', "%{$search}%")
-                  ->orWhere('generation_code', 'like', "%{$search}%")
-                  ->orWhereHas('customer', function ($q2) use ($search) {
-                      $q2->where('name', 'like', "%{$search}%")
-                         ->orWhere('company_name', 'like', "%{$search}%");
-                  });
+            $s = $request->search;
+            $query->where(function ($q) use ($s) {
+                $q->where('correlative', 'like', "%$s%")
+                  ->orWhereHas('customer', fn($q2) => $q2->where('name', 'like', "%$s%")
+                      ->orWhere('company_name', 'like', "%$s%"));
             });
         }
 
-        // Filtro por tipo de documento
-        if ($request->filled('invoice_type_id')) {
-            $query->where('invoice_type_id', $request->invoice_type_id);
-        }
-
-        // Filtro por estado
         if ($request->filled('status')) {
             $query->where('status', $request->status);
         }
 
-        // Filtro por estado MH
-        if ($request->filled('status_mh')) {
-            $query->where('status_mh', $request->status_mh);
+        if ($request->filled('payment_status')) {
+            $query->where('payment_status', $request->payment_status);
         }
 
-        // Filtro por rango de fechas
+        if ($request->filled('invoice_type_id')) {
+            $query->where('invoice_type_id', $request->invoice_type_id);
+        }
+
         if ($request->filled('date_from')) {
             $query->whereDate('issue_date', '>=', $request->date_from);
         }
+
         if ($request->filled('date_to')) {
             $query->whereDate('issue_date', '<=', $request->date_to);
         }
 
-        $perPage   = $request->input('per_page', 15);
-        $invoices  = $query->paginate($perPage)->withQueryString();
-        $invoiceTypes = InvoiceType::orderBy('name')->get();
+        $invoices    = $query->paginate(15)->withQueryString();
+        $invoiceTypes = InvoiceType::all();
 
         return view('invoices.index', compact('invoices', 'invoiceTypes'));
     }
 
-    /**
-     * Formulario para crear una nueva factura.
-     */
     public function create()
     {
         $customers    = Customer::orderBy('name')->get();
-        $invoiceTypes = InvoiceType::orderBy('name')->get();
+        $invoiceTypes = InvoiceType::all();
         $products     = Product::orderBy('name')->get();
 
         return view('invoices.create', compact('customers', 'invoiceTypes', 'products'));
     }
 
-    /**
-     * Guardar nueva factura con sus ítems.
-     */
     public function store(Request $request)
     {
         $request->validate([
@@ -89,91 +72,60 @@ class InvoiceController extends Controller
             'payment_method'   => 'required|in:cash,credit_card,bank_transfer,credit',
             'payment_status'   => 'required|in:pending,paid,overdue',
             'due_date'         => 'nullable|date|after_or_equal:issue_date',
-            'note'             => 'nullable|string|max:500',
-
-            'items'                => 'required|array|min:1',
-            'items.*.product_id'   => 'required|exists:products,id',
-            'items.*.description'  => 'required|string|max:255',
-            'items.*.quantity'     => 'required|numeric|min:0.01',
-            'items.*.unit_price'   => 'required|numeric|min:0',
-            'items.*.exento'       => 'nullable|boolean',
+            'note'             => 'nullable|string',
+            'items'            => 'required|array|min:1',
+            'items.*.product_id'  => 'required|exists:products,id',
+            'items.*.description' => 'required|string',
+            'items.*.quantity'    => 'required|numeric|min:0.01',
+            'items.*.unit_price'  => 'required|numeric|min:0',
+            'items.*.exento'      => 'nullable|boolean',
         ]);
 
-        DB::beginTransaction();
-
-        try {
-            /** @var InvoiceType $invoiceType */
+        DB::transaction(function () use ($request) {
             $invoiceType = InvoiceType::lockForUpdate()->findOrFail($request->invoice_type_id);
+            $correlative = $invoiceType->code . '-' . str_pad($invoiceType->last_correlative + 1, 8, '0', STR_PAD_LEFT);
+            $invoiceType->increment('last_correlative');
 
-            // ── Validar stock suficiente para todos los ítems ──────────────
-            // Se agrupan por producto para manejar el caso de un mismo producto
-            // en varias líneas (ej: 2 filas del mismo producto).
-            $stockNeeded = [];
-            foreach ($request->items as $item) {
-                $pid = $item['product_id'];
-                $stockNeeded[$pid] = ($stockNeeded[$pid] ?? 0) + $item['quantity'];
-            }
+            // Consumidor Final (código 01): precio ya incluye IVA → gravado = total (no se desglosa base)
+            // CCF y otros: precio sin IVA → gravado = total/1.13 (se desglosa base neta)
+            $esCF = $invoiceType->code === '01';
 
-            $stockErrors = [];
-            $productsMap = Product::lockForUpdate()
-                ->whereIn('id', array_keys($stockNeeded))
-                ->get()
-                ->keyBy('id');
-
-            foreach ($stockNeeded as $pid => $needed) {
-                $product = $productsMap[$pid] ?? null;
-                if (!$product) continue;
-                if ($product->stock < $needed) {
-                    $stockErrors[] = "«{$product->name}»: stock disponible {$product->stock}, requerido {$needed}.";
-                }
-            }
-
-            if (!empty($stockErrors)) {
-                DB::rollBack();
-                return back()
-                    ->withInput()
-                    ->with('error', 'Stock insuficiente para los siguientes productos:' . implode('<br>• ', $stockErrors));
-            }
-
-            // ── Incrementar correlativo ────────────────────────────────────
-            $nextCorrelative = $invoiceType->last_correlative + 1;
-            $invoiceType->update(['last_correlative' => $nextCorrelative]);
-
-            $correlative    = str_pad($nextCorrelative, 8, '0', STR_PAD_LEFT);
-            $generationCode = strtoupper(Str::uuid());
-
-            // ── Calcular montos ────────────────────────────────────────────
             $montoExento  = 0;
             $montoGravado = 0;
-            $ivaRate      = 0.13;
+            $subtotal     = 0;
 
+            $itemsData = [];
             foreach ($request->items as $item) {
-                $lineTotal = $item['quantity'] * $item['unit_price'];
-                if (!empty($item['exento'])) {
-                    $montoExento += $lineTotal;
+                $exento = (bool) ($item['exento'] ?? false);
+                $total  = round($item['quantity'] * $item['unit_price'], 2);
+                $subtotal += $total;
+                if ($exento) {
+                    $montoExento += $total;
                 } else {
-                    $montoGravado += $lineTotal;
+                    // CF: gravado = precio completo | CCF: gravado = precio/1.13
+                    // Acumular con precisión completa, redondear al final
+                    $montoGravado += $esCF ? $total : ($total / 1.13);
                 }
+                $itemsData[] = array_merge($item, ['total' => $total, 'exento' => $exento]);
             }
 
-            $montoIva = round($montoGravado * $ivaRate / (1 + $ivaRate), 2);
-            $subtotal  = $montoExento + $montoGravado;
-            $total     = $subtotal;
+            $montoGravado = round($montoGravado, 6); // precisión intermedia
+            $montoIva     = round($montoGravado * 0.13, 6);
+            $subtotal     = round($subtotal, 2);
 
-            // Retenciones si el cliente retiene IVA
+            // Redondear a 2 decimales solo al guardar
+            $montoGravado = round($montoGravado, 2);
+            $montoIva     = round($montoIva, 2);
+
             $customer    = Customer::findOrFail($request->customer_id);
-            $ivaRetenido = 0;
-            $isrRetenido = 0;
-            if ($customer->retains_iva) {
-                $ivaRetenido = round($montoGravado * $ivaRate / (1 + $ivaRate), 2);
-                $total -= $ivaRetenido;
-            }
+            $ivaRetenido = $customer->retains_iva ? round($montoIva * 0.01, 2) : 0;
 
-            // ── Crear cabecera de factura ──────────────────────────────────
+            $total = round($subtotal - $ivaRetenido, 2);
+
             $invoice = Invoice::create([
                 'customer_id'      => $request->customer_id,
-                'invoice_type_id'  => $invoiceType->id,
-                'generation_code'  => $generationCode,
+                'invoice_type_id'  => $request->invoice_type_id,
+                'generation_code'  => (string) Str::uuid(),
                 'correlative'      => $correlative,
                 'issue_date'       => $request->issue_date,
                 'payment_method'   => $request->payment_method,
@@ -183,7 +135,7 @@ class InvoiceController extends Controller
                 'monto_gravado'    => $montoGravado,
                 'monto_iva'        => $montoIva,
                 'iva_retenido'     => $ivaRetenido,
-                'isr_retenido'     => $isrRetenido,
+                'isr_retenido'     => 0,
                 'subtotal'         => $subtotal,
                 'total_amount'     => $total,
                 'status'           => 'draft',
@@ -191,78 +143,158 @@ class InvoiceController extends Controller
                 'note'             => $request->note,
             ]);
 
-            // ── Guardar ítems, descontar stock y registrar movimientos ─────
-            foreach ($request->items as $item) {
-                $lineTotal = round($item['quantity'] * $item['unit_price'], 2);
-
+            foreach ($itemsData as $item) {
                 InvoiceItem::create([
                     'invoice_id'  => $invoice->id,
                     'product_id'  => $item['product_id'],
                     'description' => $item['description'],
                     'quantity'    => $item['quantity'],
                     'unit_price'  => $item['unit_price'],
-                    'total'       => $lineTotal,
-                    'exento'      => !empty($item['exento']),
-                ]);
-
-                // Descontar stock y registrar movimiento
-                $product     = $productsMap[$item['product_id']];
-                $stockBefore = $product->stock;
-                $product->stock -= $item['quantity'];
-                $product->save();
-
-                // Actualizar el objeto en el map para que la siguiente línea
-                // del mismo producto parta del stock ya reducido
-                $productsMap[$item['product_id']] = $product;
-
-                InventoryMovement::create([
-                    'product_id'     => $product->id,
-                    'type'           => 'salida',
-                    'quantity'       => $item['quantity'],
-                    'note'           => "Factura #{$correlative}",
-                    'stock_before'   => $stockBefore,
-                    'stock_after'    => $product->stock,
-                    'reference_type' => Invoice::class,
-                    'reference_id'   => $invoice->id,
+                    'total'       => $item['total'],
+                    'exento'      => $item['exento'],
                 ]);
             }
+        });
 
-            DB::commit();
-
-            return redirect()
-                ->route('invoices.index')
-                ->with('success', "Factura #{$correlative} creada exitosamente.");
-
-        } catch (\Throwable $e) {
-            DB::rollBack();
-            return back()
-                ->withInput()
-                ->with('error', 'Error al guardar la factura: ' . $e->getMessage());
-        }
+        return redirect()->route('invoices.index')->with('success', 'Factura creada correctamente.');
     }
 
-    /**
-     * Ver detalle de una factura.
-     */
     public function show(Invoice $invoice)
     {
-        $invoice->load(['customer', 'invoiceType', 'items.product']);
+        $invoice->load(['customer.municipality.department', 'customer.country', 'invoiceType', 'items.product']);
+
         return view('invoices.show', compact('invoice'));
     }
 
-    /**
-     * Eliminar (solo borradores).
-     */
+    public function edit(Invoice $invoice)
+    {
+        if ($invoice->status !== 'draft') {
+            return redirect()->route('invoices.show', $invoice)->with('error', 'Solo se pueden editar facturas en borrador.');
+        }
+
+        $customers    = Customer::orderBy('name')->get();
+        $invoiceTypes = InvoiceType::all();
+        $products     = Product::orderBy('name')->get();
+        $invoice->load('items');
+
+        return view('invoices.edit', compact('invoice', 'customers', 'invoiceTypes', 'products'));
+    }
+
+    public function update(Request $request, Invoice $invoice)
+    {
+        if ($invoice->status !== 'draft') {
+            return redirect()->route('invoices.show', $invoice)->with('error', 'Solo se pueden editar facturas en borrador.');
+        }
+
+        $request->validate([
+            'customer_id'      => 'required|exists:customers,id',
+            'invoice_type_id'  => 'required|exists:invoice_types,id',
+            'issue_date'       => 'required|date',
+            'payment_method'   => 'required|in:cash,credit_card,bank_transfer,credit',
+            'payment_status'   => 'required|in:pending,paid,overdue',
+            'due_date'         => 'nullable|date|after_or_equal:issue_date',
+            'note'             => 'nullable|string',
+            'items'            => 'required|array|min:1',
+            'items.*.product_id'  => 'required|exists:products,id',
+            'items.*.description' => 'required|string',
+            'items.*.quantity'    => 'required|numeric|min:0.01',
+            'items.*.unit_price'  => 'required|numeric|min:0',
+            'items.*.exento'      => 'nullable|boolean',
+        ]);
+
+        DB::transaction(function () use ($request, $invoice) {
+            $invoiceType  = InvoiceType::findOrFail($request->invoice_type_id);
+            $esCF         = $invoiceType->code === '01';
+
+            $montoExento  = 0;
+            $montoGravado = 0;
+            $subtotal     = 0;
+
+            $itemsData = [];
+            foreach ($request->items as $item) {
+                $exento = (bool) ($item['exento'] ?? false);
+                $total  = round($item['quantity'] * $item['unit_price'], 2);
+                $subtotal += $total;
+                if ($exento) {
+                    $montoExento += $total;
+                } else {
+                    $montoGravado += $esCF ? $total : ($total / 1.13);
+                }
+                $itemsData[] = array_merge($item, ['total' => $total, 'exento' => $exento]);
+            }
+
+            $montoGravado = round($montoGravado, 6);
+            $montoIva     = round($montoGravado * 0.13, 6);
+            $subtotal     = round($subtotal, 2);
+
+            $montoGravado = round($montoGravado, 2);
+            $montoIva     = round($montoIva, 2);
+
+            $customer     = Customer::findOrFail($request->customer_id);
+            $ivaRetenido  = $customer->retains_iva ? round($montoIva * 0.01, 2) : 0;
+            $total        = round($subtotal - $ivaRetenido, 2);
+
+            $invoice->update([
+                'customer_id'      => $request->customer_id,
+                'invoice_type_id'  => $request->invoice_type_id,
+                'issue_date'       => $request->issue_date,
+                'payment_method'   => $request->payment_method,
+                'payment_status'   => $request->payment_status,
+                'due_date'         => $request->due_date,
+                'monto_exento'     => $montoExento,
+                'monto_gravado'    => $montoGravado,
+                'monto_iva'        => $montoIva,
+                'iva_retenido'     => $ivaRetenido,
+                'subtotal'         => $subtotal,
+                'total_amount'     => $total,
+                'note'             => $request->note,
+            ]);
+
+            $invoice->items()->delete();
+
+            foreach ($itemsData as $item) {
+                InvoiceItem::create([
+                    'invoice_id'  => $invoice->id,
+                    'product_id'  => $item['product_id'],
+                    'description' => $item['description'],
+                    'quantity'    => $item['quantity'],
+                    'unit_price'  => $item['unit_price'],
+                    'total'       => $item['total'],
+                    'exento'      => $item['exento'],
+                ]);
+            }
+        });
+
+        return redirect()->route('invoices.show', $invoice)->with('success', 'Factura actualizada.');
+    }
+
+    public function cancel(Request $request, Invoice $invoice)
+    {
+        $request->validate([
+            'cancellation_reason' => 'required|string|max:255',
+        ]);
+
+        if ($invoice->status === 'cancelled') {
+            return back()->with('error', 'La factura ya está anulada.');
+        }
+
+        $invoice->update([
+            'status'              => 'cancelled',
+            'cancellation_reason' => $request->cancellation_reason,
+            'cancellation_date'   => now()->toDateString(),
+        ]);
+
+        return redirect()->route('invoices.show', $invoice)->with('success', 'Factura anulada.');
+    }
+
     public function destroy(Invoice $invoice)
     {
         if ($invoice->status !== 'draft') {
             return back()->with('error', 'Solo se pueden eliminar facturas en borrador.');
         }
 
-        $invoice->items()->delete();
         $invoice->delete();
 
-        return redirect()->route('invoices.index')
-            ->with('success', 'Borrador eliminado.');
+        return redirect()->route('invoices.index')->with('success', 'Factura eliminada.');
     }
 }

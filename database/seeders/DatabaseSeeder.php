@@ -9,6 +9,7 @@ use Illuminate\Database\Seeder;
 use Database\Seeders\DepartmentSeeder;
 use Database\Seeders\MunicipalitySeeder;
 use Database\Seeders\CountrySeeder;
+use Database\Seeders\InvoiceTypeSeeder;
 
 class DatabaseSeeder extends Seeder
 {
@@ -26,6 +27,7 @@ class DatabaseSeeder extends Seeder
             DepartmentSeeder::class,
             MunicipalitySeeder::class,
             EconomicActivitySeeder::class,
+            InvoiceTypeSeeder::class,
         ]);
     }
 }
