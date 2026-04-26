@@ -110,7 +110,11 @@ class InvoiceController extends Controller
             }
 
             $montoGravado = round($montoGravado, 6); // precisión intermedia
-            $montoIva     = round($montoGravado * 0.13, 6);
+            // CF: IVA = (gravado/1.13)*0.13 = gravado*(0.13/1.13)
+            // CCF: gravado ya es base neta, IVA = gravado*0.13
+            $montoIva     = $esCF
+                ? round($montoGravado * (0.13 / 1.13), 6)
+                : round($montoGravado * 0.13, 6);
             $subtotal     = round($subtotal, 2);
 
             // Redondear a 2 decimales solo al guardar
@@ -224,7 +228,9 @@ class InvoiceController extends Controller
             }
 
             $montoGravado = round($montoGravado, 6);
-            $montoIva     = round($montoGravado * 0.13, 6);
+            $montoIva     = $esCF
+                ? round($montoGravado * (0.13 / 1.13), 6)
+                : round($montoGravado * 0.13, 6);
             $subtotal     = round($subtotal, 2);
 
             $montoGravado = round($montoGravado, 2);

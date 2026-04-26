@@ -102,8 +102,8 @@
                     <div class="form-group">
                         <label>Estado de pago *</label>
                         <select name="payment_status" required>
-                            @foreach(['pending'=>'Pendiente','paid'=>'Pagada'] as $v => $l)
-                                <option value="{{ $v }}" @selected(old('payment_status', $invoice->payment_status ?? 'paid') == $v)>{{ $l }}</option>
+                            @foreach(['pending'=>'Pendiente','paid'=>'Pagada','overdue'=>'Vencida'] as $v => $l)
+                                <option value="{{ $v }}" @selected(old('payment_status', $invoice->payment_status ?? 'pending') == $v)>{{ $l }}</option>
                             @endforeach
                         </select>
                         @error('payment_status')<div class="invalid-feedback">{{ $message }}</div>@enderror
@@ -264,7 +264,7 @@ function newRow(idx) {
 
 document.getElementById('add-row').addEventListener('click', () => {
     const tr = newRow(rowIdx++);
-    document.getElementById('items-body').prepend(tr);
+    document.getElementById('items-body').appendChild(tr);
     bindRow(tr);
     recalc();
 });
@@ -343,9 +343,12 @@ function recalc() {
         }
     });
 
-    // Redondear solo al final, acumular con precisión completa
+    // CF: IVA = (gravado/1.13)*0.13 = gravado*(0.13/1.13)
+    // CCF: gravado ya es base neta, IVA = gravado*0.13
     const gravadoR = Math.round(gravado * 10000) / 10000;
-    const ivaR     = Math.round(gravadoR * 0.13 * 10000) / 10000;
+    const ivaR     = esCF
+        ? Math.round(gravadoR * (0.13 / 1.13) * 10000) / 10000
+        : Math.round(gravadoR * 0.13 * 10000) / 10000;
     const ivarR    = retains ? Math.round(ivaR * 0.01 * 10000) / 10000 : 0;
     const totalR   = Math.round((subtotal - ivarR) * 100) / 100;
 
