@@ -34,6 +34,19 @@
 @section('content')
 @php $editing = isset($invoice); @endphp
 
+@if($errors->hasAny(array_filter(array_keys($errors->toArray()), fn($k) => str_starts_with($k, 'items.stock.'))))
+    <div class="alert alert-error" style="margin-bottom:1.2rem">
+        <strong>Stock insuficiente — no se guardó la factura:</strong><br>
+        @foreach($errors->toArray() as $key => $msgs)
+            @if(str_starts_with($key, 'items.stock.'))
+                @foreach($msgs as $msg)
+                    <div style="margin-top:.3rem">⚠ {{ $msg }}</div>
+                @endforeach
+            @endif
+        @endforeach
+    </div>
+@endif
+
 <form method="POST"
       action="{{ $editing ? route('invoices.update', $invoice) : route('invoices.store') }}">
     @csrf

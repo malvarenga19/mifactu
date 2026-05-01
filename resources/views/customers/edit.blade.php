@@ -1,507 +1,300 @@
 @extends('layouts.app')
 
-@section('title', 'Editar Cliente')
+@section('title', 'Editar Cliente: ' . $customer->name)
+@section('breadcrumb', 'Clientes / <strong>' . e($customer->name) . '</strong>')
+
+@section('topbar-actions')
+    <a href="{{ route('customers.index') }}" class="btn btn-secondary btn-sm">← Volver</a>
+@endsection
+
+@push('styles')
+    <style>
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-label {
+            font-weight: 500;
+            margin-bottom: 0.3rem;
+            display: block;
+        }
+
+        .form-hint {
+            font-size: 0.7rem;
+            color: var(--muted);
+            margin-top: 0.2rem;
+            display: block;
+        }
+
+        hr {
+            margin: 1rem 0;
+            border-color: var(--border);
+        }
+
+        .required-star::after {
+            content: " *";
+            color: var(--danger);
+        }
+    </style>
+@endpush
 
 @section('content')
-    <div class="card shadow">
-        <div class="card-header bg-white">
-            <h4 class="mb-0">
-                <i class="fas fa-user-edit text-warning"></i> Editar Cliente
-            </h4>
-        </div>
-        <div class="card-body">
-            <form action="{{ route('customers.update', $customer) }}" method="POST" id="customerForm">
-                @csrf
-                @method('PUT')
+    <form method="POST" action="{{ route('customers.update', $customer) }}" id="customerForm">
+        @csrf
+        @method('PUT')
 
-                <div class="row">
-                    <!-- Columna 1 -->
-                    <div class="col-md-6">
-                        <div class="mb-3">
-                            <label for="name" class="form-label">Nombre *</label>
-                            <input type="text" name="name" id="name"
-                                class="form-control @error('name') is-invalid @enderror"
-                                value="{{ old('name', $customer->name) }}" required>
-                            @error('name')
-                                <div class="invalid-feedback">{{ $message }}</div>
-                            @enderror
+        <div style="display:grid; grid-template-columns: 1fr 300px; gap:1.5rem; align-items:start">
+
+            {{-- Columna principal --}}
+            <div style="display:flex; flex-direction:column; gap:1.5rem">
+
+                {{-- Datos personales / empresa --}}
+                <div class="card">
+                    <div class="card-title" style="margin-bottom:1.2rem">◈ Datos del cliente</div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label required-star">Nombre completo</label>
+                            <input type="text" name="name" value="{{ old('name', $customer->name) }}" required>
+                            @error('name')<div class="invalid-feedback">{{ $message }}</div>@enderror
                         </div>
-
-                        <div class="mb-3">
-                            <label for="company_name" class="form-label">Nombre de Empresa</label>
-                            <input type="text" name="company_name" id="company_name"
-                                class="form-control @error('company_name') is-invalid @enderror"
+                        <div class="form-group">
+                            <label class="form-label">Nombre de empresa</label>
+                            <input type="text" name="company_name"
                                 value="{{ old('company_name', $customer->company_name) }}">
-                            @error('company_name')
-                                <div class="invalid-feedback">{{ $message }}</div>
-                            @enderror
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="document" class="form-label">Tipo de Documento</label>
-                            <select name="document" id="document"
-                                class="form-select @error('document') is-invalid @enderror">
-                                <option value="">Seleccione tipo</option>
-                                <option value="13" {{ old('document', $customer->document) == '13' ? 'selected' : '' }}>DUI
-                                </option>
-                                <option value="36" {{ old('document', $customer->document) == '36' ? 'selected' : '' }}>NIT
-                                </option>
-                                <option value="03" {{ old('document', $customer->document) == '03' ? 'selected' : '' }}>
-                                    Pasaporte</option>
-                                <option value="02" {{ old('document', $customer->document) == '02' ? 'selected' : '' }}>Carnet
-                                    de Residente</option>
-                                <option value="37" {{ old('document', $customer->document) == '37' ? 'selected' : '' }}>Otro
-                                </option>
-                            </select>
-                            @error('document')
-                                <div class="invalid-feedback">{{ $message }}</div>
-                            @enderror
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="document_number" class="form-label">Número de Documento</label>
-                            <input type="text" name="document_number" id="document_number"
-                                class="form-control @error('document_number') is-invalid @enderror"
-                                value="{{ old('document_number', $customer->document_number) }}">
-                            @error('document_number')
-                                <div class="invalid-feedback">{{ $message }}</div>
-                            @enderror
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="nrc" class="form-label">NRC</label>
-                            <input type="text" name="nrc" id="nrc" class="form-control @error('nrc') is-invalid @enderror"
-                                value="{{ old('nrc', $customer->nrc) }}">
-                            @error('nrc')
-                                <div class="invalid-feedback">{{ $message }}</div>
-                            @enderror
+                            @error('company_name')<div class="invalid-feedback">{{ $message }}</div>@enderror
                         </div>
                     </div>
 
-                    <!-- Columna 2 -->
-                    <div class="col-md-6">
-                        <!-- Actividad Económica con búsqueda -->
-                        <div class="mb-3 position-relative">
-                            <label for="activity_search" class="form-label">Actividad Económica</label>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Tipo de documento</label>
+                            <select name="document" id="document">
+                                <option value="">Seleccionar tipo…</option>
+                                <option value="13" @selected(old('document', $customer->document) == '13')>DUI</option>
+                                <option value="36" @selected(old('document', $customer->document) == '36')>NIT</option>
+                                <option value="03" @selected(old('document', $customer->document) == '03')>Pasaporte</option>
+                                <option value="02" @selected(old('document', $customer->document) == '02')>Carnet de Residente
+                                </option>
+                                <option value="37" @selected(old('document', $customer->document) == '37')>Otro</option>
+                            </select>
+                            @error('document')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Número de documento</label>
+                            <input type="text" name="document_number"
+                                value="{{ old('document_number', $customer->document_number) }}">
+                            @error('document_number')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">NRC</label>
+                            <input type="text" name="nrc" id="nrc" value="{{ old('nrc', $customer->nrc) }}">
+                            @error('nrc')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Actividad económica</label>
                             <input type="text" id="activity_search"
-                                class="form-control @error('activity_id') is-invalid @enderror"
-                                placeholder="Escriba el nombre de la actividad..." autocomplete="off"
-                                value="{{ old('activity_search', $customer->economicActivity?->description) }}">
+                                value="{{ old('activity_search', $customer->economicActivity ? $customer->economicActivity->code . ' - ' . $customer->economicActivity->description : '') }}"
+                                placeholder="Escriba actividad..." list="activities" autocomplete="off">
                             <input type="hidden" name="activity_id" id="activity_id"
                                 value="{{ old('activity_id', $customer->activity_id) }}">
-                            <small class="text-muted">Escriba para buscar la actividad económica</small>
-                            @error('activity_id')
-                                <div class="invalid-feedback">{{ $message }}</div>
-                            @enderror
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="email" class="form-label">Email</label>
-                            <input type="email" name="email" id="email"
-                                class="form-control @error('email') is-invalid @enderror"
-                                value="{{ old('email', $customer->email) }}">
-                            @error('email')
-                                <div class="invalid-feedback">{{ $message }}</div>
-                            @enderror
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="phone" class="form-label">Teléfono</label>
-                            <input type="text" name="phone" id="phone"
-                                class="form-control @error('phone') is-invalid @enderror"
-                                value="{{ old('phone', $customer->phone) }}">
-                            @error('phone')
-                                <div class="invalid-feedback">{{ $message }}</div>
-                            @enderror
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="address" class="form-label">Dirección</label>
-                            <textarea name="address" id="address" rows="2"
-                                class="form-control @error('address') is-invalid @enderror">{{ old('address', $customer->address) }}</textarea>
-                            @error('address')
-                                <div class="invalid-feedback">{{ $message }}</div>
-                            @enderror
-                        </div>
-
-                        <div class="mb-3">
-                            <div class="form-check">
-                                <input type="checkbox" name="retains_iva" id="retains_iva" value="1"
-                                    class="form-check-input @error('retains_iva') is-invalid @enderror" {{ old('retains_iva', $customer->retains_iva) ? 'checked' : '' }}>
-                                <label class="form-check-label" for="retains_iva">
-                                    Retiene IVA
-                                </label>
-                                @error('retains_iva')
-                                    <div class="invalid-feedback">{{ $message }}</div>
-                                @enderror
-                            </div>
+                            <datalist id="activities">
+                                @foreach($economicActivities as $activity)
+                                    <option value="{{ $activity->code }} - {{ $activity->description }}"
+                                        data-id="{{ $activity->id }}"></option>
+                                @endforeach
+                            </datalist>
+                            @error('activity_id')<div class="invalid-feedback">{{ $message }}</div>@enderror
                         </div>
                     </div>
 
-                    <!-- Fila completa para ubicación -->
-                    <div class="col-md-12">
-                        <hr>
-                        <h5 class="mb-3">Ubicación</h5>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Email</label>
+                            <input type="email" name="email" value="{{ old('email', $customer->email) }}">
+                            @error('email')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Teléfono</label>
+                            <input type="text" name="phone" value="{{ old('phone', $customer->phone) }}">
+                            @error('phone')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        </div>
                     </div>
 
-                    <div class="col-md-4">
-                        <div class="mb-3">
-                            <label for="country_id" class="form-label">País *</label>
-                            <select name="country_id" id="country_id"
-                                class="form-select @error('country_id') is-invalid @enderror" required>
-                                <option value="">Seleccione país</option>
+                    <div class="form-group">
+                        <label class="form-label">Dirección</label>
+                        <textarea name="address" rows="2">{{ old('address', $customer->address) }}</textarea>
+                        @error('address')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                    </div>
+
+                    <div class="form-group">
+                        <label style="display:flex; align-items:center; gap:0.5rem; cursor:pointer;">
+                            <input type="checkbox" name="retains_iva" value="1" @checked(old('retains_iva', $customer->retains_iva)) style="width:auto;">
+                            <span style="font-weight:normal;">Retiene IVA</span>
+                        </label>
+                        @error('retains_iva')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                    </div>
+                </div>
+
+                {{-- Ubicación geográfica --}}
+                <div class="card">
+                    <div class="card-title" style="margin-bottom:1.2rem">◉ Ubicación</div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">País</label>
+                            <select name="country_id" id="country_id">
+                                <option value="">Seleccionar país…</option>
                                 @foreach($countries as $country)
-                                    <option value="{{ $country->id }}" {{ old('country_id', $customer->country_id) == $country->id ? 'selected' : '' }}>
+                                    <option value="{{ $country->id }}" @selected(old('country_id', $customer->country_id) == $country->id)>
                                         {{ $country->name }}
                                     </option>
                                 @endforeach
                             </select>
-                            @error('country_id')
-                                <div class="invalid-feedback">{{ $message }}</div>
-                            @enderror
+                            @error('country_id')<div class="invalid-feedback">{{ $message }}</div>@enderror
                         </div>
-                    </div>
-
-                    <div class="col-md-4">
-                        <div class="mb-3">
-                            <label for="department_id" class="form-label">Departamento</label>
-                            <select id="department_id" name="department_id" class="form-select">
-                                <option value="">Seleccione departamento</option>
+                        <div class="form-group">
+                            <label class="form-label">Departamento</label>
+                            <select name="department_id" id="department_id">
+                                <option value="">Seleccionar departamento…</option>
                                 @foreach($departments as $dept)
-                                    <option value="{{ $dept->id }}" {{ old('department_id', $customer->municipality?->department_id) == $dept->id ? 'selected' : '' }}>
-                                        {{ $dept->name }}
-                                    </option>
+                                    <option value="{{ $dept->id }}" @selected(old('department_id', $customer->municipality?->department_id) == $dept->id)>{{ $dept->name }}</option>
                                 @endforeach
                             </select>
                         </div>
-                    </div>
-
-                    <div class="col-md-4">
-                        <div class="mb-3">
-                            <label for="municipality_id" class="form-label">Municipio</label>
-                            <select name="municipality_id" id="municipality_id"
-                                class="form-select @error('municipality_id') is-invalid @enderror">
-                                <option value="">Seleccione municipio</option>
+                        <div class="form-group">
+                            <label class="form-label">Municipio</label>
+                            <select name="municipality_id" id="municipality_id">
+                                <option value="">Seleccionar municipio…</option>
+                                @if($customer->municipality_id)
+                                    <option value="{{ $customer->municipality_id }}" selected>
+                                        {{ $customer->municipality?->name }}</option>
+                                @endif
                             </select>
-                            @error('municipality_id')
-                                <div class="invalid-feedback">{{ $message }}</div>
-                            @enderror
+                            @error('municipality_id')<div class="invalid-feedback">{{ $message }}</div>@enderror
                         </div>
                     </div>
                 </div>
+            </div>
 
-                <div class="d-flex justify-content-end gap-2 mt-3">
-                    <a href="{{ route('customers.index') }}" class="btn btn-secondary">Cancelar</a>
-                    <button type="submit" class="btn btn-primary">Actualizar Cliente</button>
+            {{-- Panel lateral --}}
+            <div style="position:sticky; top:1rem;">
+                <div class="card">
+                    <div class="card-title" style="margin-bottom:1rem">◎ Acciones</div>
+                    <div style="display:flex; flex-direction:column; gap:0.6rem;">
+                        <button type="submit" class="btn btn-primary" style="width:100%; justify-content:center;">✓ Guardar
+                            cambios</button>
+                        <a href="{{ route('customers.index') }}" class="btn btn-secondary"
+                            style="width:100%; justify-content:center;">Cancelar</a>
+                    </div>
+                    <hr>
+                    <div class="form-hint" style="text-align:center; margin-top:0.5rem;">
+                        Los campos marcados con * son obligatorios.
+                    </div>
                 </div>
-            </form>
+            </div>
         </div>
-    </div>
+    </form>
 @endsection
 
 @push('scripts')
     <script>
-        // Datos de actividades
-        const economicActivities = @json($economicActivities->map(function ($activity) {
-            return [
-                'id' => $activity->id,
-                'name' => $activity->description
-            ];
-        }));
+        // Actividad económica
+        const input = document.getElementById('activity_search');
+        const hidden = document.getElementById('activity_id');
+        const options = Array.from(document.querySelectorAll('#activities option'));
 
-        // Datos de municipios
+        input.addEventListener('input', function () {
+            const match = options.find(opt => opt.value === this.value);
+            hidden.value = match ? match.dataset.id : '';
+        });
+
+        // Departamentos y municipios (El Salvador)
         const municipalities = @json($municipalities);
-
-        // Obtener ID de El Salvador
         const elSalvadorId = @json($countries->firstWhere('name', 'El Salvador')?->id);
 
-        // Elementos del DOM
-        const searchInput = document.getElementById('activity_search');
-        const hiddenInput = document.getElementById('activity_id');
-        let suggestionsDiv = null;
+        const countrySelect = document.getElementById('country_id');
+        const departmentSelect = document.getElementById('department_id');
+        const municipioSelect = document.getElementById('municipality_id');
 
-        // Función para mostrar sugerencias de actividades
-        function showSuggestions(matches, inputElement) {
-            if (suggestionsDiv) {
-                suggestionsDiv.remove();
-                suggestionsDiv = null;
-            }
+        const currentMunicipalityId = {{ $customer->municipality_id ?? 'null' }};
+        const currentDepartmentId = {{ $customer->municipality?->department_id ?? 'null' }};
 
-            if (!matches || matches.length === 0) return;
-
-            suggestionsDiv = document.createElement('div');
-            suggestionsDiv.className = 'list-group position-absolute shadow';
-            suggestionsDiv.style.zIndex = '1000';
-            suggestionsDiv.style.maxHeight = '250px';
-            suggestionsDiv.style.overflowY = 'auto';
-            suggestionsDiv.style.backgroundColor = 'white';
-            suggestionsDiv.style.border = '1px solid #ddd';
-            suggestionsDiv.style.borderRadius = '4px';
-            suggestionsDiv.style.width = inputElement.offsetWidth + 'px';
-
-            matches.slice(0, 10).forEach(match => {
-                const item = document.createElement('button');
-                item.type = 'button';
-                item.className = 'list-group-item list-group-item-action';
-                item.textContent = match.name;
-                item.style.textAlign = 'left';
-                item.style.padding = '8px 12px';
-                item.style.border = 'none';
-                item.style.borderBottom = '1px solid #eee';
-                item.style.backgroundColor = 'white';
-                item.style.cursor = 'pointer';
-                item.style.width = '100%';
-
-                item.addEventListener('mouseenter', () => {
-                    item.style.backgroundColor = '#e9ecef';
-                });
-                item.addEventListener('mouseleave', () => {
-                    item.style.backgroundColor = 'white';
-                });
-
-                item.addEventListener('click', () => {
-                    searchInput.value = match.name;
-                    hiddenInput.value = match.id;
-                    if (suggestionsDiv) {
-                        suggestionsDiv.remove();
-                        suggestionsDiv = null;
-                    }
-                });
-
-                suggestionsDiv.appendChild(item);
-            });
-
-            const rect = inputElement.getBoundingClientRect();
-            suggestionsDiv.style.position = 'fixed';
-            suggestionsDiv.style.top = (rect.bottom + window.scrollY) + 'px';
-            suggestionsDiv.style.left = (rect.left + window.scrollX) + 'px';
-
-            document.body.appendChild(suggestionsDiv);
-        }
-
-        // Búsqueda de actividades
-        if (searchInput) {
-            searchInput.addEventListener('input', function () {
-                const query = this.value.toLowerCase().trim();
-
-                if (query === '') {
-                    hiddenInput.value = '';
-                    if (suggestionsDiv) {
-                        suggestionsDiv.remove();
-                        suggestionsDiv = null;
-                    }
-                    return;
-                }
-
-                const matches = economicActivities.filter(activity =>
-                    activity.name.toLowerCase().includes(query)
-                );
-
-                const exactMatch = matches.find(m => m.name.toLowerCase() === query);
-                if (exactMatch && matches.length === 1) {
-                    hiddenInput.value = exactMatch.id;
-                    if (suggestionsDiv) {
-                        suggestionsDiv.remove();
-                        suggestionsDiv = null;
-                    }
-                } else {
-                    hiddenInput.value = '';
-                    showSuggestions(matches, this);
-                }
-            });
-
-            document.addEventListener('click', function (e) {
-                if (e.target !== searchInput && suggestionsDiv) {
-                    suggestionsDiv.remove();
-                    suggestionsDiv = null;
-                }
-            });
-        }
-
-        // Funciones para ubicación
-        function loadMunicipalities(deptId) {
+        function loadMunicipalitiesByDepartment(deptId, selectedMuniId = null) {
             deptId = parseInt(deptId);
-            const municipioSelect = $('#municipality_id');
-
-            municipioSelect.empty().append('<option value="">Seleccione municipio</option>');
-
-            if (deptId && !isNaN(deptId)) {
-                const filteredMunicipalities = municipalities.filter(muni => muni.department_id === deptId);
-
-                if (filteredMunicipalities.length > 0) {
-                    filteredMunicipalities.forEach(muni => {
-                        const selected = ({{ old('municipality_id', $customer->municipality_id) }} == muni.id) ? 'selected' : '';
-                        municipioSelect.append(`<option value="${muni.id}" ${selected}>${muni.name}</option>`);
+            if (deptId) {
+                let filtered = municipalities.filter(muni => muni.department_id === deptId);
+                municipioSelect.innerHTML = '<option value="">Seleccionar municipio…</option>';
+                if (filtered.length > 0) {
+                    filtered.forEach(muni => {
+                        const selected = (selectedMuniId && parseInt(selectedMuniId) === muni.id) ? 'selected' : '';
+                        municipioSelect.innerHTML += `<option value="${muni.id}" ${selected}>${muni.name}</option>`;
                     });
-                    municipioSelect.prop('disabled', false);
                 } else {
-                    municipioSelect.append('<option value="">No hay municipios disponibles</option>');
-                    municipioSelect.prop('disabled', true);
+                    municipioSelect.innerHTML = '<option value="">No hay municipios para este departamento</option>';
                 }
             } else {
-                municipioSelect.prop('disabled', true);
+                municipioSelect.innerHTML = '<option value="">Primero seleccione un departamento</option>';
             }
-
-            municipioSelect.trigger('change');
+            municipioSelect.disabled = false;
         }
 
-        // Eventos de ubicación
-        $('#country_id').on('change', function () {
-            const countryId = parseInt($(this).val());
-            const departmentSelect = $('#department_id');
-
+        countrySelect.addEventListener('change', function () {
+            let countryId = parseInt(this.value);
             if (countryId === elSalvadorId) {
-                departmentSelect.prop('disabled', false);
-                departmentSelect.val('{{ old('department_id', $customer->municipality?->department_id) }}').trigger('change');
-            } else if (countryId && countryId !== elSalvadorId) {
-                departmentSelect.prop('disabled', true);
-                departmentSelect.val('1').trigger('change');
-                loadMunicipalities(1);
-                $('#municipality_id').prop('disabled', false);
-            } else {
-                departmentSelect.prop('disabled', false);
-                departmentSelect.val('').trigger('change');
-                loadMunicipalities(null);
-            }
-        });
-
-        $('#department_id').on('change', function () {
-            const deptId = $(this).val();
-            loadMunicipalities(deptId);
-        });
-
-        // Inicializar al cargar
-        $(document).ready(function () {
-            const initialCountry = $('#country_id').val();
-            if (initialCountry && parseInt(initialCountry) !== elSalvadorId) {
-                $('#department_id').prop('disabled', true);
-                $('#department_id').val('1');
-                loadMunicipalities(1);
-            } else {
-                const initialDept = $('#department_id').val();
-                if (initialDept) {
-                    loadMunicipalities(initialDept);
-                }
-            }
-        });
-    </script>
-    <script>
-        document.addEventListener('DOMContentLoaded', function () {
-            const documentTypeSelect = document.getElementById('document');
-            const nrcInput = document.getElementById('nrc');
-            const activitySearch = document.getElementById('activity_search');
-            const activityHidden = document.getElementById('activity_id');
-
-            // Función para validar requeridos según tipo de documento
-            function updateRequiredFields() {
-                const isNIT = documentTypeSelect.value === '36';
-
-                if (isNIT) {
-                    // Hacer NRC requerido
-                    nrcInput.setAttribute('required', 'required');
-                    nrcInput.classList.add('required-field');
-
-                    // Hacer Actividad Económica requerida
-                    activitySearch.setAttribute('required', 'required');
-                    activityHidden.setAttribute('required', 'required');
-                    activitySearch.classList.add('required-field');
-
-                    // Agregar indicador visual
-                    addRequiredIndicator(nrcInput, 'NRC');
-                    addRequiredIndicator(activitySearch, 'Actividad Económica');
+                departmentSelect.disabled = false;
+                departmentSelect.value = currentDepartmentId || '';
+                if (currentDepartmentId) {
+                    loadMunicipalitiesByDepartment(currentDepartmentId, currentMunicipalityId);
                 } else {
-                    // Quitar required
-                    nrcInput.removeAttribute('required');
-                    activitySearch.removeAttribute('required');
-                    activityHidden.removeAttribute('required');
-                    nrcInput.classList.remove('required-field');
-                    activitySearch.classList.remove('required-field');
-
-                    // Quitar indicador visual
-                    removeRequiredIndicator(nrcInput);
-                    removeRequiredIndicator(activitySearch);
+                    municipioSelect.innerHTML = '<option value="">Seleccione un departamento primero</option>';
                 }
+            } else if (countryId && countryId !== elSalvadorId) {
+                departmentSelect.disabled = true;
+                departmentSelect.value = '';
+                municipioSelect.innerHTML = '<option value="">Seleccione un país válido</option>';
+                municipioSelect.disabled = true;
+            } else {
+                departmentSelect.disabled = false;
+                municipioSelect.innerHTML = '<option value="">Seleccione un departamento</option>';
             }
-
-            // Agregar asterisco visual
-            function addRequiredIndicator(input, labelText) {
-                const formGroup = input.closest('.mb-3');
-                if (formGroup && !formGroup.querySelector('.required-asterisk')) {
-                    const label = formGroup.querySelector('.form-label');
-                    if (label && !label.innerHTML.includes('<span class="required-asterisk text-danger">*</span>')) {
-                        const asterisk = document.createElement('span');
-                        asterisk.className = 'required-asterisk text-danger';
-                        asterisk.innerHTML = ' *';
-                        label.appendChild(asterisk);
-                    }
-                }
-            }
-
-            // Quitar asterisco visual
-            function removeRequiredIndicator(input) {
-                const formGroup = input.closest('.mb-3');
-                if (formGroup) {
-                    const asterisk = formGroup.querySelector('.required-asterisk');
-                    if (asterisk) {
-                        asterisk.remove();
-                    }
-                }
-            }
-
-            // Validar antes de enviar el formulario
-            const form = document.getElementById('customerForm');
-            if (form) {
-                form.addEventListener('submit', function (e) {
-                    const isNIT = documentTypeSelect.value === '36';
-
-                    if (isNIT) {
-                        let isValid = true;
-                        let errorMessage = '';
-
-                        // Validar NRC
-                        if (!nrcInput.value.trim()) {
-                            isValid = false;
-                            errorMessage += '• El NRC es requerido cuando el tipo de documento es NIT\n';
-                            nrcInput.classList.add('is-invalid');
-                        } else {
-                            nrcInput.classList.remove('is-invalid');
-                        }
-
-                        // Validar Actividad Económica
-                        if (!activityHidden.value && !activitySearch.value.trim()) {
-                            isValid = false;
-                            errorMessage += '• La Actividad Económica es requerida cuando el tipo de documento es NIT\n';
-                            activitySearch.classList.add('is-invalid');
-                        } else if (!activityHidden.value && activitySearch.value.trim()) {
-                            isValid = false;
-                            errorMessage += '• Por favor seleccione una Actividad Económica válida de la lista\n';
-                            activitySearch.classList.add('is-invalid');
-                        } else {
-                            activitySearch.classList.remove('is-invalid');
-                        }
-
-                        if (!isValid) {
-                            e.preventDefault();
-                            alert('Por favor complete los siguientes campos requeridos:\n' + errorMessage);
-                        }
-                    }
-                });
-
-                // Limpiar errores al escribir
-                nrcInput.addEventListener('input', function () {
-                    this.classList.remove('is-invalid');
-                });
-
-                activitySearch.addEventListener('input', function () {
-                    this.classList.remove('is-invalid');
-                });
-            }
-
-            // Escuchar cambios en el tipo de documento
-            documentTypeSelect.addEventListener('change', updateRequiredFields);
-
-            // Ejecutar al cargar la página
-            updateRequiredFields();
         });
+
+        departmentSelect.addEventListener('change', function () {
+            let deptId = this.value;
+            loadMunicipalitiesByDepartment(deptId, currentMunicipalityId);
+        });
+
+        // Inicializar si el país es El Salvador
+        if (countrySelect.value && parseInt(countrySelect.value) === elSalvadorId) {
+            if (currentDepartmentId) {
+                loadMunicipalitiesByDepartment(currentDepartmentId, currentMunicipalityId);
+            }
+        }
+
+        // Campos condicionales para NIT
+        const documentTypeSelect = document.getElementById('document');
+        const nrcInput = document.getElementById('nrc');
+        const activitySearch = document.getElementById('activity_search');
+        const activityHidden = document.getElementById('activity_id');
+
+        function updateRequiredFields() {
+            const isNIT = documentTypeSelect.value === '36';
+            if (isNIT) {
+                nrcInput.setAttribute('required', 'required');
+                activitySearch.setAttribute('required', 'required');
+                activityHidden.setAttribute('required', 'required');
+            } else {
+                nrcInput.removeAttribute('required');
+                activitySearch.removeAttribute('required');
+                activityHidden.removeAttribute('required');
+            }
+        }
+
+        documentTypeSelect.addEventListener('change', updateRequiredFields);
+        updateRequiredFields();
     </script>
 @endpush

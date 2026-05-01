@@ -215,7 +215,7 @@
         /* ── Forms ── */
         .form-group { margin-bottom: 1.1rem; }
         label { display: block; font-size: 0.78rem; color: var(--muted); margin-bottom: 0.35rem; font-family: var(--mono); letter-spacing: 0.06em; text-transform: uppercase; }
-        input[type=text], input[type=date], input[type=number], select, textarea {
+        input[type=text], input[type=date], input[type=number], input[type=email], select, textarea {
             width: 100%;
             background: var(--surface2);
             border: 1px solid var(--border);
@@ -344,6 +344,9 @@
         </a>
         <a href="{{ route('products.index') }}" class="{{ request()->routeIs('products.*') ? 'active' : '' }}">
             <span class="icon">◉</span> Productos
+        </a>
+        <a href="{{ route('inventory_movements.index') }}" class="{{ request()->routeIs('inventory-movement.*') ? 'active' : '' }}">
+            <span class="icon">◎</span> Movimiento de inventario
         </a>
     </nav>
     <div class="nav-section">Sistema</div>

@@ -1,256 +1,258 @@
 @extends('layouts.app')
 
 @section('title', 'Nuevo Producto')
+@section('breadcrumb', 'Productos / <strong>Nuevo</strong>')
+
+@section('topbar-actions')
+    <a href="{{ route('products.index') }}" class="btn btn-secondary btn-sm">← Volver</a>
+@endsection
+
+@push('styles')
+<style>
+    .form-group { margin-bottom: 1.5rem; }
+    .form-label { font-weight: 500; margin-bottom: 0.3rem; display: block; }
+    .input-group-text { background-color: var(--surface2); }
+    .equivalent-row { margin-bottom: 0.5rem; }
+    .remove-equivalent { background: none; border: 1px solid var(--border); color: var(--danger); transition: all 0.15s; }
+    .remove-equivalent:hover { background: rgba(255,92,92,0.1); border-color: var(--danger); }
+</style>
+@endpush
 
 @section('content')
-    <div class="card shadow">
-        <div class="card-header bg-white">
-            <h4 class="mb-0">
-                <i class="fas fa-plus-circle text-success"></i> Nuevo Producto
-            </h4>
+<form method="POST" action="{{ route('products.store') }}" enctype="multipart/form-data" id="productForm">
+    @csrf
+
+    <div style="display:grid; grid-template-columns: 1fr 300px; gap:1.5rem; align-items:start">
+
+        {{-- Columna principal --}}
+        <div style="display:flex; flex-direction:column; gap:1.5rem">
+
+            {{-- Información básica --}}
+            <div class="card">
+                <div class="card-title" style="margin-bottom:1.2rem">◈ Información general</div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Nombre *</label>
+                        <input type="text" name="name" value="{{ old('name') }}" required>
+                        @error('name')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Código</label>
+                        <input type="text" name="code" value="{{ old('code') }}" placeholder="SKU / Código interno">
+                        <span class="form-hint">Código único del producto (opcional)</span>
+                        @error('code')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Categoría</label>
+                        <select name="category_id">
+                            <option value="">Seleccionar categoría…</option>
+                            @foreach($categories as $category)
+                                <option value="{{ $category->id }}" @selected(old('category_id') == $category->id)>
+                                    {{ $category->name }}
+                                </option>
+                            @endforeach
+                        </select>
+                        @error('category_id')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Proveedor</label>
+                        <select name="supplier_id">
+                            <option value="">Seleccionar proveedor…</option>
+                            @foreach($suppliers as $supplier)
+                                <option value="{{ $supplier->id }}" @selected(old('supplier_id') == $supplier->id)>
+                                    {{ $supplier->name }}
+                                </option>
+                            @endforeach
+                        </select>
+                        @error('supplier_id')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Ubicación</label>
+                        <input type="text" name="location" value="{{ old('location') }}" placeholder="Ej: Estante A, Fila 2">
+                        @error('location')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Descripción</label>
+                        <textarea name="description" rows="2" placeholder="Descripción del producto...">{{ old('description') }}</textarea>
+                        @error('description')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                    </div>
+                </div>
+            </div>
+
+            {{-- Precios y stock --}}
+            <div class="card">
+                <div class="card-title" style="margin-bottom:1.2rem">◉ Precios y stock</div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Precio de costo</label>
+                        <div class="input-group">
+                            <span class="input-group-text">$</span>
+                            <input type="number" name="cost_price" step="0.01" value="{{ old('cost_price') }}">
+                        </div>
+                        @error('cost_price')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Precio de venta *</label>
+                        <div class="input-group">
+                            <span class="input-group-text">$</span>
+                            <input type="number" name="sale_price" step="0.01" value="{{ old('sale_price') }}" required>
+                        </div>
+                        @error('sale_price')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Stock actual *</label>
+                        <input type="number" name="stock" step="0.01" value="{{ old('stock', 0) }}" required>
+                        @error('stock')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Stock mínimo</label>
+                        <input type="number" name="min_stock" step="0.01" value="{{ old('min_stock', 0) }}">
+                        <span class="form-hint">Alertar cuando el stock esté por debajo</span>
+                        @error('min_stock')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                    </div>
+                </div>
+            </div>
+
+            {{-- Códigos equivalentes --}}
+            <div class="card">
+                <div class="card-title" style="margin-bottom:1rem">◈ Códigos equivalentes</div>
+                <div id="equivalentsContainer">
+                    <div class="equivalent-row" style="display:flex; gap:0.5rem; margin-bottom:0.5rem;">
+                        <input type="text" name="equivalent_codes[]" style="flex:1" placeholder="Código equivalente (ej: SKU-123, código de proveedor)">
+                        <button type="button" class="remove-equivalent" style="display:none;" disabled>✕</button>
+                    </div>
+                </div>
+                <button type="button" id="addEquivalent" class="btn btn-secondary btn-sm" style="margin-top:0.5rem;">+ Agregar otro código</button>
+                <span class="form-hint">Códigos alternativos para buscar este producto</span>
+            </div>
         </div>
-        <div class="card-body">
-            <form action="{{ route('products.store') }}" method="POST" enctype="multipart/form-data" id="productForm">
-                @csrf
 
-                <div class="row">
-                    <div class="col-md-6">
-                        <div class="mb-3">
-                            <label for="name" class="form-label">Nombre *</label>
-                            <input type="text" name="name" id="name"
-                                class="form-control @error('name') is-invalid @enderror" value="{{ old('name') }}" required>
-                            @error('name')
-                                <div class="invalid-feedback">{{ $message }}</div>
-                            @enderror
-                        </div>
+        {{-- Panel lateral --}}
+        <div style="position:sticky; top:1rem;">
+            <div class="card">
+                <div class="card-title" style="margin-bottom:1rem">◎ Imagen del producto</div>
 
-                        <div class="mb-3">
-                            <label for="code" class="form-label">Código</label>
-                            <input type="text" name="code" id="code"
-                                class="form-control @error('code') is-invalid @enderror" value="{{ old('code') }}">
-                            @error('code')
-                                <div class="invalid-feedback">{{ $message }}</div>
-                            @enderror
-                            <small class="text-muted">Código único del producto (opcional)</small>
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="category_id" class="form-label">Categoría</label>
-                            <select name="category_id" id="category_id"
-                                class="form-select @error('category_id') is-invalid @enderror">
-                                <option value="">Seleccione categoría</option>
-                                @foreach($categories as $category)
-                                    <option value="{{ $category->id }}" {{ old('category_id') == $category->id ? 'selected' : '' }}>
-                                        {{ $category->name }}
-                                    </option>
-                                @endforeach
-                            </select>
-                            @error('category_id')
-                                <div class="invalid-feedback">{{ $message }}</div>
-                            @enderror
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="supplier_id" class="form-label">Proveedor</label>
-                            <select name="supplier_id" id="supplier_id"
-                                class="form-select @error('supplier_id') is-invalid @enderror">
-                                <option value="">Seleccione proveedor</option>
-                                @foreach($suppliers as $supplier)
-                                    <option value="{{ $supplier->id }}" {{ old('supplier_id') == $supplier->id ? 'selected' : '' }}>
-                                        {{ $supplier->name }}
-                                    </option>
-                                @endforeach
-                            </select>
-                            @error('supplier_id')
-                                <div class="invalid-feedback">{{ $message }}</div>
-                            @enderror
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="location" class="form-label">Ubicación</label>
-                            <input type="text" name="location" id="location"
-                                class="form-control @error('location') is-invalid @enderror" value="{{ old('location') }}"
-                                placeholder="Ej: Estante A, Fila 2">
-                            @error('location')
-                                <div class="invalid-feedback">{{ $message }}</div>
-                            @enderror
-                        </div>
-
-                       
-                        <div class="mb-3">
-                            <label class="form-label">Códigos Equivalentes</label>
-                            <div id="equivalentsContainer">
-                                <div class="input-group mb-2 equivalent-row">
-                                    <input type="text" name="equivalent_codes[]" class="form-control"
-                                        placeholder="Código equivalente (ej: SKU-123, código de proveedor, etc.)">
-                                    <button type="button" class="btn btn-outline-danger remove-equivalent"
-                                        style="display: none;">
-                                        <i class="fas fa-trash"></i>
-                                    </button>
-                                </div>
-                            </div>
-                            <button type="button" id="addEquivalent" class="btn btn-sm btn-outline-primary">
-                                <i class="fas fa-plus"></i> Agregar otro código equivalente
-                            </button>
-                            <small class="text-muted d-block mt-1">Códigos alternativos para buscar este producto (código de
-                                proveedor, SKU alternativo, etc.)</small>
-                        </div>
-                    </div>
-
-                    <div class="col-md-6">
-                        <div class="mb-3">
-                            <label for="description" class="form-label">Descripción</label>
-                            <textarea name="description" id="description" rows="3"
-                                class="form-control @error('description') is-invalid @enderror"
-                                placeholder="Descripción del producto...">{{ old('description') }}</textarea>
-                            @error('description')
-                                <div class="invalid-feedback">{{ $message }}</div>
-                            @enderror
-                        </div>
-
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label for="cost_price" class="form-label">Precio de Costo</label>
-                                    <div class="input-group">
-                                        <span class="input-group-text">$</span>
-                                        <input type="number" name="cost_price" id="cost_price" step="0.01"
-                                            class="form-control @error('cost_price') is-invalid @enderror"
-                                            value="{{ old('cost_price') }}">
-                                    </div>
-                                    @error('cost_price')
-                                        <div class="invalid-feedback">{{ $message }}</div>
-                                    @enderror
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label for="sale_price" class="form-label">Precio de Venta *</label>
-                                    <div class="input-group">
-                                        <span class="input-group-text">$</span>
-                                        <input type="number" name="sale_price" id="sale_price" step="0.01"
-                                            class="form-control @error('sale_price') is-invalid @enderror"
-                                            value="{{ old('sale_price') }}" required>
-                                    </div>
-                                    @error('sale_price')
-                                        <div class="invalid-feedback">{{ $message }}</div>
-                                    @enderror
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label for="stock" class="form-label">Stock *</label>
-                                    <input type="number" name="stock" id="stock"
-                                        class="form-control @error('stock') is-invalid @enderror"
-                                        value="{{ old('stock', 0) }}" required>
-                                    @error('stock')
-                                        <div class="invalid-feedback">{{ $message }}</div>
-                                    @enderror
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label for="min_stock" class="form-label">Stock Mínimo</label>
-                                    <input type="number" name="min_stock" id="min_stock"
-                                        class="form-control @error('min_stock') is-invalid @enderror"
-                                        value="{{ old('min_stock', 0) }}">
-                                    @error('min_stock')
-                                        <div class="invalid-feedback">{{ $message }}</div>
-                                    @enderror
-                                    <small class="text-muted">Alertar cuando el stock esté por debajo</small>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="image_path" class="form-label">Imagen del Producto</label>
-                            <input type="file" name="image_path" id="image_path"
-                                class="form-control @error('image_path') is-invalid @enderror" accept="image/*">
-                            @error('image_path')
-                                <div class="invalid-feedback">{{ $message }}</div>
-                            @enderror
-                            <small class="text-muted">Formatos: JPG, PNG, GIF (Máx. 2MB)</small>
-                            <div id="imagePreview" class="mt-2"></div>
-                        </div>
-                    </div>
+                <div id="imagePreview" style="text-align:center; margin-bottom:1rem; min-height:150px; background:var(--surface2); border-radius:var(--radius); display:flex; align-items:center; justify-content:center; flex-direction:column; gap:0.5rem;">
+                    <span style="color:var(--muted); font-size:0.85rem;">Sin imagen</span>
                 </div>
 
-                <div class="d-flex justify-content-end gap-2 mt-3">
-                    <a href="{{ route('products.index') }}" class="btn btn-secondary">
-                        <i class="fas fa-times"></i> Cancelar
-                    </a>
-                    <button type="submit" class="btn btn-success">
-                        <i class="fas fa-save"></i> Guardar Producto
-                    </button>
+                <div class="form-group">
+                    <input type="file" name="image_path" id="image_path" accept="image/*" style="padding:0.4rem;">
+                    <span class="form-hint">Formatos: JPG, PNG, GIF (Máx. 2MB)</span>
+                    @error('image_path')<div class="invalid-feedback">{{ $message }}</div>@enderror
                 </div>
-            </form>
+
+                <hr style="margin: 1rem 0;">
+
+                <div style="display:flex; flex-direction:column; gap:0.6rem;">
+                    <button type="submit" class="btn btn-primary" style="width:100%; justify-content:center;">✓ Guardar producto</button>
+                    <a href="{{ route('products.index') }}" class="btn btn-secondary" style="width:100%; justify-content:center;">Cancelar</a>
+                </div>
+            </div>
         </div>
     </div>
+</form>
 @endsection
 
 @push('scripts')
-    <script>
-        // Vista previa de imagen
-        document.getElementById('image_path').addEventListener('change', function (e) {
-            const preview = document.getElementById('imagePreview');
-            preview.innerHTML = '';
+<script>
+    // Vista previa de imagen
+    document.getElementById('image_path').addEventListener('change', function(e) {
+        const preview = document.getElementById('imagePreview');
+        preview.innerHTML = '';
 
-            if (e.target.files && e.target.files[0]) {
-                const reader = new FileReader();
-                reader.onload = function (e) {
-                    const img = document.createElement('img');
-                    img.src = e.target.result;
-                    img.style.maxWidth = '200px';
-                    img.style.maxHeight = '200px';
-                    img.className = 'img-thumbnail mt-2';
-                    preview.appendChild(img);
-                }
-                reader.readAsDataURL(e.target.files[0]);
+        if (e.target.files && e.target.files[0]) {
+            const reader = new FileReader();
+            reader.onload = function(ev) {
+                const img = document.createElement('img');
+                img.src = ev.target.result;
+                img.style.maxWidth = '100%';
+                img.style.maxHeight = '180px';
+                img.style.borderRadius = 'var(--radius)';
+                img.style.objectFit = 'contain';
+                preview.appendChild(img);
+            };
+            reader.readAsDataURL(e.target.files[0]);
+        } else {
+            preview.innerHTML = '<span style="color:var(--muted); font-size:0.85rem;">Sin imagen</span>';
+        }
+    });
+
+    // Manejo de equivalencias
+    let equivalentCount = 1;
+
+    function updateRemoveButtons() {
+        const rows = document.querySelectorAll('.equivalent-row');
+        rows.forEach((row, idx) => {
+            const btn = row.querySelector('.remove-equivalent');
+            if (rows.length === 1) {
+                btn.style.display = 'none';
+                btn.disabled = true;
+            } else {
+                btn.style.display = 'inline-flex';
+                btn.disabled = false;
             }
         });
+    }
 
-        // Validación
-        document.getElementById('productForm').addEventListener('submit', function (e) {
-            const name = document.getElementById('name').value.trim();
-            const salePrice = document.getElementById('sale_price').value;
+    document.getElementById('addEquivalent').addEventListener('click', () => {
+        const container = document.getElementById('equivalentsContainer');
+        const newRow = document.createElement('div');
+        newRow.className = 'equivalent-row';
+        newRow.style.display = 'flex';
+        newRow.style.gap = '0.5rem';
+        newRow.style.marginBottom = '0.5rem';
+        newRow.innerHTML = `
+            <input type="text" name="equivalent_codes[]" style="flex:1" placeholder="Código equivalente">
+            <button type="button" class="remove-equivalent" style="background:none; border:1px solid var(--border); color:var(--danger); border-radius:var(--radius); cursor:pointer; padding:0 0.6rem;">✕</button>
+        `;
+        container.appendChild(newRow);
+        newRow.querySelector('.remove-equivalent').addEventListener('click', function() {
+            newRow.remove();
+            updateRemoveButtons();
+        });
+        updateRemoveButtons();
+    });
 
-            if (!name) {
-                e.preventDefault();
-                alert('El nombre del producto es requerido');
-                document.getElementById('name').focus();
-            }
-
-            if (!salePrice || salePrice <= 0) {
-                e.preventDefault();
-                alert('El precio de venta debe ser mayor a 0');
-                document.getElementById('sale_price').focus();
+    document.querySelectorAll('.remove-equivalent').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const row = this.closest('.equivalent-row');
+            if (row && document.querySelectorAll('.equivalent-row').length > 1) {
+                row.remove();
+                updateRemoveButtons();
             }
         });
+    });
 
-        // Manejo de equivalencias
-let equivalentCount = 1;
+    updateRemoveButtons();
 
-$('#addEquivalent').click(function() {
-    equivalentCount++;
-    const newRow = `
-        <div class="input-group mb-2 equivalent-row">
-            <input type="text" 
-                   name="equivalent_codes[]" 
-                   class="form-control" 
-                   placeholder="Código equivalente">
-            <button type="button" class="btn btn-outline-danger remove-equivalent">
-                <i class="fas fa-trash"></i>
-            </button>
-        </div>
-    `;
-    $('#equivalentsContainer').append(newRow);
-});
+    // Validación simple
+    document.getElementById('productForm').addEventListener('submit', function(e) {
+        const name = document.querySelector('input[name="name"]').value.trim();
+        const salePrice = document.querySelector('input[name="sale_price"]').value;
 
-$(document).on('click', '.remove-equivalent', function() {
-    $(this).closest('.equivalent-row').remove();
-});
-    </script>
+        if (!name) {
+            e.preventDefault();
+            alert('El nombre del producto es requerido');
+            document.querySelector('input[name="name"]').focus();
+        }
+
+        if (!salePrice || parseFloat(salePrice) <= 0) {
+            e.preventDefault();
+            alert('El precio de venta debe ser mayor a 0');
+            document.querySelector('input[name="sale_price"]').focus();
+        }
+    });
+</script>
 @endpush

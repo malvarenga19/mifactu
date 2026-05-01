@@ -47,9 +47,8 @@ class CustomerController extends Controller
         $perPage = $request->input('per_page', 10);
         $customers = $query->paginate($perPage);
 
-        // Si es una petición AJAX, devolver solo la tabla
         if ($request->ajax()) {
-            return view('customers.partials.table', compact('customers'))->render();
+            return response()->json($customers);
         }
 
         // Datos para los selects (si los necesitas en la vista principal)
@@ -100,7 +99,8 @@ class CustomerController extends Controller
     /**
      * Display the specified resource.
      */
-    public function show(Customer $customer) {
+    public function show(Customer $customer)
+    {
         return view('customers.show', compact('customer'));
     }
 

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\InvoiceType;
+use App\Models\InventoryMovement;
 use App\Models\Customer;
 use App\Models\Product;
 use Illuminate\Http\Request;
@@ -81,13 +82,24 @@ class InvoiceController extends Controller
             'items.*.exento'      => 'nullable|boolean',
         ]);
 
+        // Validar stock ANTES de la transacción para poder redirigir con errores
+        $stockErrors = [];
+        foreach ($request->items as $item) {
+            $product = Product::find($item['product_id']);
+            if ($product && $product->stock < (int) $item['quantity']) {
+                $stockErrors["items.stock.{$item['product_id']}"] =
+                    "'{$product->name}': stock disponible {$product->stock}, requerido {$item['quantity']}";
+            }
+        }
+        if (!empty($stockErrors)) {
+            return back()->withInput()->withErrors($stockErrors);
+        }
+
         DB::transaction(function () use ($request) {
             $invoiceType = InvoiceType::lockForUpdate()->findOrFail($request->invoice_type_id);
             $correlative = $invoiceType->code . '-' . str_pad($invoiceType->last_correlative + 1, 8, '0', STR_PAD_LEFT);
             $invoiceType->increment('last_correlative');
 
-            // Consumidor Final (código 01): precio ya incluye IVA → gravado = total (no se desglosa base)
-            // CCF y otros: precio sin IVA → gravado = total/1.13 (se desglosa base neta)
             $esCF = $invoiceType->code === '01';
 
             $montoExento  = 0;
@@ -102,22 +114,17 @@ class InvoiceController extends Controller
                 if ($exento) {
                     $montoExento += $total;
                 } else {
-                    // CF: gravado = precio completo | CCF: gravado = precio/1.13
-                    // Acumular con precisión completa, redondear al final
                     $montoGravado += $esCF ? $total : ($total / 1.13);
                 }
                 $itemsData[] = array_merge($item, ['total' => $total, 'exento' => $exento]);
             }
 
-            $montoGravado = round($montoGravado, 6); // precisión intermedia
-            // CF: IVA = (gravado/1.13)*0.13 = gravado*(0.13/1.13)
-            // CCF: gravado ya es base neta, IVA = gravado*0.13
+            $montoGravado = round($montoGravado, 6);
             $montoIva     = $esCF
                 ? round($montoGravado * (0.13 / 1.13), 6)
                 : round($montoGravado * 0.13, 6);
             $subtotal     = round($subtotal, 2);
 
-            // Redondear a 2 decimales solo al guardar
             $montoGravado = round($montoGravado, 2);
             $montoIva     = round($montoIva, 2);
 
@@ -147,6 +154,7 @@ class InvoiceController extends Controller
                 'note'             => $request->note,
             ]);
 
+            // Guardar ítems y descontar stock
             foreach ($itemsData as $item) {
                 InvoiceItem::create([
                     'invoice_id'  => $invoice->id,
@@ -157,10 +165,24 @@ class InvoiceController extends Controller
                     'total'       => $item['total'],
                     'exento'      => $item['exento'],
                 ]);
+
+                $product     = Product::lockForUpdate()->findOrFail($item['product_id']);
+                $stockBefore = $product->stock;
+                $product->stock -= (int) $item['quantity'];
+                $product->save();
+
+                InventoryMovement::create([
+                    'product_id'   => $product->id,
+                    'type'         => 'salida',
+                    'quantity'     => (int) $item['quantity'],
+                    'note'         => 'Factura: ' . $invoice->correlative,
+                    'stock_before' => $stockBefore,
+                    'stock_after'  => $product->stock,
+                ]);
             }
         });
 
-        return redirect()->route('invoices.index')->with('success', 'Factura creada correctamente.');
+        return redirect()->route('invoices.index')->with('success', 'Factura creada y stock descontado.');
     }
 
     public function show(Invoice $invoice)
@@ -205,6 +227,32 @@ class InvoiceController extends Controller
             'items.*.unit_price'  => 'required|numeric|min:0',
             'items.*.exento'      => 'nullable|boolean',
         ]);
+
+        // Validar stock ANTES de la transacción.
+        // Para edición: sumar el stock actual de los ítems viejos al disponible
+        // porque dentro de la transacción se revertirán primero.
+        $invoice->load('items');
+        $stockDisponible = [];
+        foreach ($invoice->items as $oldItem) {
+            $stockDisponible[$oldItem->product_id] =
+                ($stockDisponible[$oldItem->product_id] ?? Product::find($oldItem->product_id)->stock)
+                + (int) $oldItem->quantity;
+        }
+
+        $stockErrors = [];
+        foreach ($request->items as $item) {
+            $pid  = $item['product_id'];
+            $qty  = (int) $item['quantity'];
+            $disp = $stockDisponible[$pid] ?? Product::find($pid)->stock ?? 0;
+            if ($disp < $qty) {
+                $product = Product::find($pid);
+                $stockErrors["items.stock.{$pid}"] =
+                    "'{$product->name}': stock disponible {$disp}, requerido {$qty}";
+            }
+        }
+        if (!empty($stockErrors)) {
+            return back()->withInput()->withErrors($stockErrors);
+        }
 
         DB::transaction(function () use ($request, $invoice) {
             $invoiceType  = InvoiceType::findOrFail($request->invoice_type_id);
@@ -256,8 +304,26 @@ class InvoiceController extends Controller
                 'note'             => $request->note,
             ]);
 
+            // Revertir stock de ítems anteriores
+            foreach ($invoice->items as $oldItem) {
+                $product     = Product::lockForUpdate()->findOrFail($oldItem->product_id);
+                $stockBefore = $product->stock;
+                $product->stock += (int) $oldItem->quantity;
+                $product->save();
+
+                InventoryMovement::create([
+                    'product_id'   => $product->id,
+                    'type'         => 'entrada',
+                    'quantity'     => (int) $oldItem->quantity,
+                    'note'         => 'Edición de factura (reverso): ' . $invoice->correlative,
+                    'stock_before' => $stockBefore,
+                    'stock_after'  => $product->stock,
+                ]);
+            }
+
             $invoice->items()->delete();
 
+            // Guardar nuevos ítems y descontar stock
             foreach ($itemsData as $item) {
                 InvoiceItem::create([
                     'invoice_id'  => $invoice->id,
@@ -267,6 +333,20 @@ class InvoiceController extends Controller
                     'unit_price'  => $item['unit_price'],
                     'total'       => $item['total'],
                     'exento'      => $item['exento'],
+                ]);
+
+                $product     = Product::lockForUpdate()->findOrFail($item['product_id']);
+                $stockBefore = $product->stock;
+                $product->stock -= (int) $item['quantity'];
+                $product->save();
+
+                InventoryMovement::create([
+                    'product_id'   => $product->id,
+                    'type'         => 'salida',
+                    'quantity'     => (int) $item['quantity'],
+                    'note'         => 'Edición de factura: ' . $invoice->correlative,
+                    'stock_before' => $stockBefore,
+                    'stock_after'  => $product->stock,
                 ]);
             }
         });
@@ -284,11 +364,33 @@ class InvoiceController extends Controller
             return back()->with('error', 'La factura ya está anulada.');
         }
 
-        $invoice->update([
-            'status'              => 'cancelled',
-            'cancellation_reason' => $request->cancellation_reason,
-            'cancellation_date'   => now()->toDateString(),
-        ]);
+        DB::transaction(function () use ($request, $invoice) {
+            // Restaurar stock siempre (se descuenta al crear el borrador)
+            $invoice->load('items');
+            foreach ($invoice->items as $item) {
+                $product     = Product::lockForUpdate()->findOrFail($item->product_id);
+                $stockBefore = $product->stock;
+                $qty         = (int) $item->quantity;
+
+                $product->stock += $qty;
+                $product->save();
+
+                InventoryMovement::create([
+                    'product_id'   => $product->id,
+                    'type'         => 'entrada',
+                    'quantity'     => $qty,
+                    'note'         => 'Anulación de factura: ' . $invoice->correlative,
+                    'stock_before' => $stockBefore,
+                    'stock_after'  => $product->stock,
+                ]);
+            }
+
+            $invoice->update([
+                'status'              => 'cancelled',
+                'cancellation_reason' => $request->cancellation_reason,
+                'cancellation_date'   => now()->toDateString(),
+            ]);
+        });
 
         return redirect()->route('invoices.show', $invoice)->with('success', 'Factura anulada.');
     }

@@ -41,9 +41,10 @@ class ProductController extends Controller
         $products = $query->orderBy('id', 'desc')->paginate($perPage);
 
         // Para AJAX
-        if ($request->ajax()) {
-            return view('products.partials.table', compact('products'))->render();
-        }
+          // Si es petición AJAX, devolver JSON
+    if ($request->ajax()) {
+        return response()->json($products);
+    }
 
         $categories = Category::orderBy('name')->get();
         $suppliers = Supplier::orderBy('name')->get();

@@ -23,6 +23,13 @@
 
 @section('content')
 
+@if($errors->has('stock'))
+    <div class="alert alert-error">
+        <strong>Stock insuficiente:</strong><br>
+        {{ $errors->first('stock') }}
+    </div>
+@endif
+
 @php
     $statusLabels = ['draft'=>'Borrador','issued'=>'Emitida','cancelled'=>'Anulada'];
     $payLabels    = ['pending'=>'Pendiente','paid'=>'Pagada','overdue'=>'Vencida'];
@@ -280,7 +287,7 @@
             <button onclick="document.getElementById('cancel-modal').style.display='none'"
                     style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.2rem">✕</button>
         </div>
-        <form method="POST" action="#">
+        <form method="POST" action="{{ route('invoices.cancel', $invoice) }}">
             @csrf @method('PATCH')
             <div class="form-group">
                 <label>Motivo de anulación *</label>

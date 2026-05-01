@@ -51,16 +51,12 @@
                     <td>{{ number_format($movement->stock_before, 2) }}</td>
                     <td>{{ number_format($movement->stock_after, 2) }}</td>
                     <td>
-                        @if($movement->reference_type == 'invoice')
-                            <span class="badge bg-info">
-                                <i class="fas fa-file-invoice"></i> Factura #{{ $movement->reference_id }}
-                            </span>
-                        @elseif($movement->reference_type == 'adjustment')
-                            <span class="badge bg-secondary">
-                                <i class="fas fa-edit"></i> Ajuste manual
-                            </span>
+                        @if($movement->note)
+                            <div>{{ $movement->note }}</div>
                         @else
-                            <span class="text-muted">—</span>
+                            <span class="text-muted">
+                                <i class="fas fa-info-circle"></i> -
+                            </span>
                         @endif
                     </td>
                 </tr>
