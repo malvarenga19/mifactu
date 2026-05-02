@@ -42,7 +42,6 @@
                     <div class="form-group">
                         <label class="form-label">Código</label>
                         <input type="text" name="code" value="{{ old('code', $product->code) }}" placeholder="SKU / Código interno">
-                        <span class="form-hint">Código único del producto (opcional)</span>
                         @error('code')<div class="invalid-feedback">{{ $message }}</div>@enderror
                     </div>
                 </div>
@@ -96,7 +95,6 @@
                     <div class="form-group">
                         <label class="form-label">Precio de costo</label>
                         <div class="input-group">
-                            <span class="input-group-text">$</span>
                             <input type="number" name="cost_price" step="0.01" value="{{ old('cost_price', $product->cost_price) }}">
                         </div>
                         @error('cost_price')<div class="invalid-feedback">{{ $message }}</div>@enderror
@@ -104,7 +102,6 @@
                     <div class="form-group">
                         <label class="form-label">Precio de venta *</label>
                         <div class="input-group">
-                            <span class="input-group-text">$</span>
                             <input type="number" name="sale_price" step="0.01" value="{{ old('sale_price', $product->sale_price) }}" required>
                         </div>
                         @error('sale_price')<div class="invalid-feedback">{{ $message }}</div>@enderror
@@ -114,13 +111,12 @@
                 <div class="form-row">
                     <div class="form-group">
                         <label class="form-label">Stock actual *</label>
-                        <input type="number" name="stock" step="0.01" value="{{ old('stock', $product->stock) }}" required>
+                        <input type="number" name="stock" step="0.01" value="{{ old('stock', $product->stock) }}" required readonly>
                         @error('stock')<div class="invalid-feedback">{{ $message }}</div>@enderror
                     </div>
                     <div class="form-group">
                         <label class="form-label">Stock mínimo</label>
                         <input type="number" name="min_stock" step="0.01" value="{{ old('min_stock', $product->min_stock) }}">
-                        <span class="form-hint">Alertar cuando el stock esté por debajo</span>
                         @error('min_stock')<div class="invalid-feedback">{{ $message }}</div>@enderror
                     </div>
                 </div>
@@ -149,7 +145,6 @@
                     @endif
                 </div>
                 <button type="button" id="addEquivalent" class="btn btn-secondary btn-sm" style="margin-top:0.5rem;">+ Agregar otro código</button>
-                <span class="form-hint">Códigos alternativos para buscar este producto</span>
             </div>
         </div>
 

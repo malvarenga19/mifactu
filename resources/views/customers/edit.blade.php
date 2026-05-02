@@ -35,6 +35,11 @@
             content: " *";
             color: var(--danger);
         }
+
+        .required-indicator::after {
+            content: " *";
+            color: #dc3545;
+        }
     </style>
 @endpush
 
@@ -81,8 +86,8 @@
                             @error('document')<div class="invalid-feedback">{{ $message }}</div>@enderror
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Número de documento</label>
-                            <input type="text" name="document_number"
+                            <label class="form-label" id="documentNumberLabel">Número de documento</label>
+                            <input type="text" name="document_number" id="document_number"
                                 value="{{ old('document_number', $customer->document_number) }}">
                             @error('document_number')<div class="invalid-feedback">{{ $message }}</div>@enderror
                         </div>
@@ -90,12 +95,12 @@
 
                     <div class="form-row">
                         <div class="form-group">
-                            <label class="form-label">NRC</label>
+                            <label class="form-label" id="nrcLabel">NRC</label>
                             <input type="text" name="nrc" id="nrc" value="{{ old('nrc', $customer->nrc) }}">
                             @error('nrc')<div class="invalid-feedback">{{ $message }}</div>@enderror
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Actividad económica</label>
+                            <label class="form-label" id="activityLabel">Actividad económica</label>
                             <input type="text" id="activity_search"
                                 value="{{ old('activity_search', $customer->economicActivity ? $customer->economicActivity->code . ' - ' . $customer->economicActivity->description : '') }}"
                                 placeholder="Escriba actividad..." list="activities" autocomplete="off">
@@ -113,20 +118,20 @@
 
                     <div class="form-row">
                         <div class="form-group">
-                            <label class="form-label">Email</label>
-                            <input type="email" name="email" value="{{ old('email', $customer->email) }}">
+                            <label class="form-label" id="emailLabel">Email</label>
+                            <input type="email" name="email" id="email" value="{{ old('email', $customer->email) }}">
                             @error('email')<div class="invalid-feedback">{{ $message }}</div>@enderror
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Teléfono</label>
-                            <input type="text" name="phone" value="{{ old('phone', $customer->phone) }}">
+                            <label class="form-label" id="phoneLabel">Teléfono</label>
+                            <input type="text" name="phone" id="phone" value="{{ old('phone', $customer->phone) }}">
                             @error('phone')<div class="invalid-feedback">{{ $message }}</div>@enderror
                         </div>
                     </div>
 
                     <div class="form-group">
-                        <label class="form-label">Dirección</label>
-                        <textarea name="address" rows="2">{{ old('address', $customer->address) }}</textarea>
+                        <label class="form-label" id="addressLabel">Dirección</label>
+                        <textarea name="address" id="address" rows="2">{{ old('address', $customer->address) }}</textarea>
                         @error('address')<div class="invalid-feedback">{{ $message }}</div>@enderror
                     </div>
 
@@ -145,8 +150,8 @@
 
                     <div class="form-row">
                         <div class="form-group">
-                            <label class="form-label">País</label>
-                            <select name="country_id" id="country_id">
+                            <label class="form-label required-indicator">País</label>
+                            <select name="country_id" id="country_id" required>
                                 <option value="">Seleccionar país…</option>
                                 @foreach($countries as $country)
                                     <option value="{{ $country->id }}" @selected(old('country_id', $customer->country_id) == $country->id)>
@@ -157,7 +162,7 @@
                             @error('country_id')<div class="invalid-feedback">{{ $message }}</div>@enderror
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Departamento</label>
+                            <label class="form-label" id="departmentLabel">Departamento</label>
                             <select name="department_id" id="department_id">
                                 <option value="">Seleccionar departamento…</option>
                                 @foreach($departments as $dept)
@@ -166,7 +171,7 @@
                             </select>
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Municipio</label>
+                            <label class="form-label" id="municipalityLabel">Municipio</label>
                             <select name="municipality_id" id="municipality_id">
                                 <option value="">Seleccionar municipio…</option>
                                 @if($customer->municipality_id)
@@ -275,26 +280,123 @@
             }
         }
 
-        // Campos condicionales para NIT
+        // ============================================
+        // LÓGICA PARA NIT: TODOS LOS CAMPOS OBLIGATORIOS EXCEPTO NOMBRE DE EMPRESA
+        // ============================================
         const documentTypeSelect = document.getElementById('document');
         const nrcInput = document.getElementById('nrc');
         const activitySearch = document.getElementById('activity_search');
         const activityHidden = document.getElementById('activity_id');
+        const documentNumberInput = document.getElementById('document_number');
+        const emailInput = document.getElementById('email');
+        const phoneInput = document.getElementById('phone');
+        const addressInput = document.getElementById('address');
+        
+        // Labels para agregar el indicador visual
+        const nrcLabel = document.getElementById('nrcLabel');
+        const activityLabel = document.getElementById('activityLabel');
+        const emailLabel = document.getElementById('emailLabel');
+        const phoneLabel = document.getElementById('phoneLabel');
+        const addressLabel = document.getElementById('addressLabel');
+        const documentNumberLabel = document.getElementById('documentNumberLabel');
+        const departmentLabel = document.getElementById('departmentLabel');
+        const municipalityLabel = document.getElementById('municipalityLabel');
 
         function updateRequiredFields() {
             const isNIT = documentTypeSelect.value === '36';
+            
+            // Lista de campos a hacer obligatorios cuando es NIT
+            const fieldsToValidate = [
+                { element: nrcInput, label: nrcLabel, name: 'nrc' },
+                { element: activitySearch, label: activityLabel, name: 'activity_search' },
+                { element: activityHidden, label: null, name: 'activity_id' },
+                { element: documentNumberInput, label: documentNumberLabel, name: 'document_number' },
+                { element: emailInput, label: emailLabel, name: 'email' },
+                { element: phoneInput, label: phoneLabel, name: 'phone' },
+                { element: addressInput, label: addressLabel, name: 'address' }
+            ];
+            
             if (isNIT) {
-                nrcInput.setAttribute('required', 'required');
-                activitySearch.setAttribute('required', 'required');
-                activityHidden.setAttribute('required', 'required');
+                // Marcar todos los campos como obligatorios
+                fieldsToValidate.forEach(field => {
+                    if (field.element) {
+                        field.element.setAttribute('required', 'required');
+                    }
+                    if (field.label && !field.label.classList.contains('required-indicator')) {
+                        field.label.classList.add('required-indicator');
+                    }
+                });
+                
+                // También hacer obligatorios departamento y municipio (si El Salvador está seleccionado)
+                if (parseInt(countrySelect.value) === elSalvadorId) {
+                    departmentSelect.setAttribute('required', 'required');
+                    municipioSelect.setAttribute('required', 'required');
+                    if (departmentLabel) departmentLabel.classList.add('required-indicator');
+                    if (municipalityLabel) municipalityLabel.classList.add('required-indicator');
+                }
+                
             } else {
-                nrcInput.removeAttribute('required');
-                activitySearch.removeAttribute('required');
-                activityHidden.removeAttribute('required');
+                // Remover required de todos los campos
+                fieldsToValidate.forEach(field => {
+                    if (field.element) {
+                        field.element.removeAttribute('required');
+                    }
+                    if (field.label) {
+                        field.label.classList.remove('required-indicator');
+                    }
+                });
+                
+                // Remover required de departamento y municipio
+                departmentSelect.removeAttribute('required');
+                municipioSelect.removeAttribute('required');
+                if (departmentLabel) departmentLabel.classList.remove('required-indicator');
+                if (municipalityLabel) municipalityLabel.classList.remove('required-indicator');
             }
         }
-
+        
+        // Escuchar cambios en el tipo de documento
         documentTypeSelect.addEventListener('change', updateRequiredFields);
+        
+        // También cuando cambie el país, actualizar requeridos de departamento/municipio si es NIT
+        countrySelect.addEventListener('change', function() {
+            const isNIT = documentTypeSelect.value === '36';
+            const isElSalvador = parseInt(this.value) === elSalvadorId;
+            
+            if (isNIT && isElSalvador) {
+                departmentSelect.setAttribute('required', 'required');
+                municipioSelect.setAttribute('required', 'required');
+                if (departmentLabel) departmentLabel.classList.add('required-indicator');
+                if (municipalityLabel) municipalityLabel.classList.add('required-indicator');
+            } else if (isNIT && !isElSalvador) {
+                departmentSelect.removeAttribute('required');
+                municipioSelect.removeAttribute('required');
+                if (departmentLabel) departmentLabel.classList.remove('required-indicator');
+                if (municipalityLabel) municipalityLabel.classList.remove('required-indicator');
+                
+                // Limpiar valores si no es El Salvador
+                departmentSelect.value = '';
+                municipioSelect.innerHTML = '<option value="">Seleccionar municipio…</option>';
+            } else if (!isNIT) {
+                departmentSelect.removeAttribute('required');
+                municipioSelect.removeAttribute('required');
+                if (departmentLabel) departmentLabel.classList.remove('required-indicator');
+                if (municipalityLabel) municipalityLabel.classList.remove('required-indicator');
+            }
+        });
+        
+        // Inicializar la función al cargar la página
         updateRequiredFields();
+        
+        // Asegurar que el campo nombre siempre tenga el indicador visual
+        const nameLabel = document.querySelector('label[for="name"]');
+        if (nameLabel && !nameLabel.classList.contains('required-star')) {
+            nameLabel.classList.add('required-star');
+        }
+        
+        // Asegurar que el campo país siempre tenga el indicador visual
+        const countryLabel = document.querySelector('label[for="country_id"]');
+        if (countryLabel && !countryLabel.classList.contains('required-indicator')) {
+            countryLabel.classList.add('required-indicator');
+        }
     </script>
 @endpush

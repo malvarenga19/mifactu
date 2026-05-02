@@ -34,6 +34,7 @@ class Invoice extends Model
         'cancellation_date',
         'cancellation_mh_stamp',
         'cancellation_generation_code',
+        'credit_days',
     ];
 
     protected $casts = [

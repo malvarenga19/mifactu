@@ -1,63 +1,209 @@
 @extends('layouts.app')
 
 @section('title', 'Facturas')
-@section('breadcrumb')
-    Facturación / <strong>Listado</strong>
-@endsection
+@section('breadcrumb', 'Facturación / <strong>Listado</strong>')
 
 @section('topbar-actions')
-    <a href="{{ route('invoices.create') }}" class="btn btn-primary">+ Nueva factura</a>
+    <a href="{{ route('invoices.create') }}" class="btn btn-primary btn-sm">+ Nueva factura</a>
 @endsection
 
+@push('styles')
+<style>
+    .search-container {
+        margin-bottom: 1.5rem;
+        display: flex;
+        gap: 1rem;
+        align-items: flex-end;
+        flex-wrap: wrap;
+    }
+    .search-group {
+        flex: 1;
+        min-width: 160px;
+    }
+    .search-group label {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--muted);
+        margin-bottom: 0.25rem;
+        display: block;
+    }
+    .search-group input, .search-group select {
+        width: 100%;
+    }
+    .invoices-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .invoices-table th {
+        font-family: var(--mono);
+        font-size: 0.68rem;
+        letter-spacing: .1em;
+        text-transform: uppercase;
+        color: var(--muted);
+        padding: 0.75rem 0.5rem;
+        border-bottom: 1px solid var(--border);
+        text-align: left;
+    }
+    .invoices-table td {
+        padding: 0.75rem 0.5rem;
+        border-bottom: 1px solid var(--border);
+        vertical-align: middle;
+    }
+    .badge {
+        display: inline-block;
+        padding: 0.2rem 0.6rem;
+        border-radius: 20px;
+        font-size: 0.7rem;
+        font-weight: 600;
+    }
+    .badge-draft { background: rgba(100, 100, 100, 0.15); color: #666; }
+    .badge-issued { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
+    .badge-cancelled { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+    .badge-pending { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+    .badge-paid { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
+    .badge-overdue { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+    .badge-received { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
+    .badge-rejected { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+    .badge-pending-mh { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+    .pagination-info {
+        margin-top: 1rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 0.85rem;
+        color: var(--muted);
+    }
+    .pagination-links {
+        display: flex;
+        gap: 0.3rem;
+    }
+    .pagination-links a, .pagination-links span {
+        padding: 0.4rem 0.8rem;
+        border-radius: var(--radius);
+        background: var(--surface2);
+        text-decoration: none;
+        color: var(--text);
+        font-size: 0.85rem;
+        cursor: pointer;
+    }
+    .pagination-links a:hover {
+        background: var(--accent);
+        color: white;
+    }
+    .pagination-links .active {
+        background: var(--accent);
+        color: white;
+    }
+    .loading {
+        text-align: center;
+        padding: 2rem;
+        color: var(--muted);
+    }
+    .total-amount {
+        font-family: var(--mono);
+        font-weight: 700;
+        text-align: right;
+    }
+    .filter-active {
+        background: var(--accent);
+        color: white;
+        padding: 0.2rem 0.5rem;
+        border-radius: 20px;
+        font-size: 0.7rem;
+    }
+    .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.7);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+    .modal-content {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        max-width: 400px;
+        width: 90%;
+        padding: 1.5rem;
+    }
+    .modal-content h4 {
+        margin-bottom: 1rem;
+        font-family: var(--mono);
+        color: var(--danger);
+    }
+    .modal-content p {
+        margin-bottom: 1.5rem;
+    }
+    .modal-actions {
+        display: flex;
+        gap: 0.5rem;
+        justify-content: flex-end;
+    }
+</style>
+@endpush
+
 @section('content')
-
 <div class="card">
-    {{-- Filtros --}}
-    <form method="GET" action="{{ route('invoices.index') }}" style="margin-bottom:1.4rem;">
-        <div class="form-row" style="grid-template-columns:1fr 1fr 160px 160px 140px 140px auto;">
-            <div class="form-group" style="margin:0">
-                <input type="text" name="search" placeholder="Correlativo o cliente…" value="{{ request('search') }}">
-            </div>
-            <div class="form-group" style="margin:0">
-                <select name="invoice_type_id">
-                    <option value="">Todos los tipos</option>
-                    @foreach($invoiceTypes as $type)
-                        <option value="{{ $type->id }}" @selected(request('invoice_type_id') == $type->id)>{{ $type->name }}</option>
-                    @endforeach
-                </select>
-            </div>
-            <div class="form-group" style="margin:0">
-                <select name="status">
-                    <option value="">Estado</option>
-                    <option value="draft"     @selected(request('status')=='draft')>Borrador</option>
-                    <option value="issued"    @selected(request('status')=='issued')>Emitida</option>
-                    <option value="cancelled" @selected(request('status')=='cancelled')>Anulada</option>
-                </select>
-            </div>
-            <div class="form-group" style="margin:0">
-                <select name="payment_status">
-                    <option value="">Pago</option>
-                    <option value="pending" @selected(request('payment_status')=='pending')>Pendiente</option>
-                    <option value="paid"    @selected(request('payment_status')=='paid')>Pagada</option>
-                    <option value="overdue" @selected(request('payment_status')=='overdue')>Vencida</option>
-                </select>
-            </div>
-            <div class="form-group" style="margin:0">
-                <input type="date" name="date_from" value="{{ request('date_from') }}" title="Desde">
-            </div>
-            <div class="form-group" style="margin:0">
-                <input type="date" name="date_to" value="{{ request('date_to') }}" title="Hasta">
-            </div>
-            <div style="display:flex;gap:0.4rem;align-items:center;">
-                <button type="submit" class="btn btn-primary btn-sm">Filtrar</button>
-                <a href="{{ route('invoices.index') }}" class="btn btn-secondary btn-sm">✕</a>
-            </div>
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <span class="card-title">◉ Listado de facturas</span>
+        <div id="today-indicator" class="today-indicator" style="display: flex;">
+            📅 {{ date('d/m/Y') }}
         </div>
-    </form>
+    </div>
 
-    {{-- Tabla --}}
+    {{-- Filtros de búsqueda --}}
+    <div class="search-container">
+        <div class="search-group">
+            <label>🔍 Buscar</label>
+            <input type="text" id="search-input" placeholder="Correlativo o cliente..." autocomplete="off">
+        </div>
+        <div class="search-group">
+            <label>📄 Tipo factura</label>
+            <select id="invoice-type-filter">
+                <option value="">Todos los tipos</option>
+                @foreach($invoiceTypes as $type)
+                    <option value="{{ $type->id }}">{{ $type->name }}</option>
+                @endforeach
+            </select>
+        </div>
+        <div class="search-group">
+            <label>📊 Estado</label>
+            <select id="status-filter">
+                <option value="">Todos</option>
+                <option value="draft">Borrador</option>
+                <option value="issued">Emitida</option>
+                <option value="cancelled">Anulada</option>
+            </select>
+        </div>
+        <div class="search-group">
+            <label>💰 Estado pago</label>
+            <select id="payment-status-filter">
+                <option value="">Todos</option>
+                <option value="pending">Pendiente</option>
+                <option value="paid">Pagada</option>
+                <option value="overdue">Vencida</option>
+            </select>
+        </div>
+        <div class="search-group">
+            <label>📅 Desde</label>
+            <input type="date" id="date-from-filter">
+        </div>
+        <div class="search-group">
+            <label>📅 Hasta</label>
+            <input type="date" id="date-to-filter">
+        </div>
+        <div class="search-group">
+            <label>&nbsp;</label>
+            <button type="button" id="reset-filters" class="btn btn-secondary btn-sm">⟳ Limpiar</button>
+        </div>
+    </div>
+
+    {{-- Tabla de resultados --}}
     <div class="table-wrap">
-        <table>
+        <table class="invoices-table">
             <thead>
                 <tr>
                     <th>Correlativo</th>
@@ -69,90 +215,275 @@
                     <th>Estado</th>
                     <th>Pago</th>
                     <th>MH</th>
-                    <th></th>
+                    <th style="width: 100px;">Acciones</th>
                 </tr>
             </thead>
-            <tbody>
-            @forelse($invoices as $inv)
+            <tbody id="invoices-tbody">
                 <tr>
-                    <td style="font-family:var(--mono);font-size:0.8rem;color:var(--accent)">{{ $inv->correlative }}</td>
-                    <td style="font-size:0.82rem;color:var(--muted)">{{ $inv->invoiceType->name ?? '—' }}</td>
-                    <td>
-                        <div style="font-weight:500">{{ $inv->customer->name }}</div>
-                        @if($inv->customer->company_name)
-                            <div style="font-size:0.78rem;color:var(--muted)">{{ $inv->customer->company_name }}</div>
-                        @endif
-                    </td>
-                    <td style="font-family:var(--mono);font-size:0.8rem">{{ \Carbon\Carbon::parse($inv->issue_date)->format('d/m/Y') }}</td>
-                    <td style="font-size:0.82rem">
-                        @php $pm = ['cash'=>'Efectivo','credit_card'=>'Tarjeta','bank_transfer'=>'Transferencia','credit'=>'Crédito']; @endphp
-                        {{ $pm[$inv->payment_method] ?? $inv->payment_method }}
-                    </td>
-                    <td style="text-align:right;font-family:var(--mono);font-weight:700">
-                        ${{ number_format($inv->total_amount, 2) }}
-                    </td>
-                    <td>
-                        <span class="badge badge-{{ $inv->status }}">
-                            {{ ['draft'=>'Borrador','issued'=>'Emitida','cancelled'=>'Anulada'][$inv->status] ?? $inv->status }}
-                        </span>
-                    </td>
-                    <td>
-                        <span class="badge badge-{{ $inv->payment_status }}">
-                            {{ ['pending'=>'Pendiente','paid'=>'Pagada','overdue'=>'Vencida'][$inv->payment_status] ?? $inv->payment_status }}
-                        </span>
-                    </td>
-                    <td>
-                        <span class="badge badge-{{ $inv->status_mh === 'received' ? 'issued' : ($inv->status_mh === 'rejected' ? 'cancelled' : 'draft') }}"
-                              style="font-size:0.65rem">
-                            {{ strtoupper($inv->status_mh) }}
-                        </span>
-                    </td>
-                    <td>
-                        <div style="display:flex;gap:0.3rem">
-                            <a href="{{ route('invoices.show', $inv) }}" class="btn btn-secondary btn-sm">Ver</a>
-                            @if($inv->status === 'draft')
-                                <a href="{{ route('invoices.edit', $inv) }}" class="btn btn-secondary btn-sm">Editar</a>
-                            @endif
-                        </div>
-                    </td>
+                    <td colspan="10" class="loading">Cargando facturas...</td>
                 </tr>
-            @empty
-                <tr>
-                    <td colspan="10" style="text-align:center;color:var(--muted);padding:2.5rem">
-                        No se encontraron facturas.
-                    </td>
-                </tr>
-            @endforelse
             </tbody>
         </table>
     </div>
 
-    {{-- Paginación --}}
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:1rem;">
-        <span style="font-size:0.8rem;color:var(--muted)">
-            {{ $invoices->firstItem() }}–{{ $invoices->lastItem() }} de {{ $invoices->total() }} registros
-        </span>
-        <div class="pagination">
-            @if($invoices->onFirstPage())
-                <span>‹</span>
-            @else
-                <a href="{{ $invoices->previousPageUrl() }}">‹</a>
-            @endif
+    <div class="pagination-info">
+        <div id="pagination-info-text">Mostrando 0 registros</div>
+        <div id="pagination-links" class="pagination-links"></div>
+    </div>
+</div>
 
-            @foreach($invoices->getUrlRange(1, $invoices->lastPage()) as $page => $url)
-                @if($page == $invoices->currentPage())
-                    <span class="active">{{ $page }}</span>
-                @else
-                    <a href="{{ $url }}">{{ $page }}</a>
-                @endif
-            @endforeach
-
-            @if($invoices->hasMorePages())
-                <a href="{{ $invoices->nextPageUrl() }}">›</a>
-            @else
-                <span>›</span>
-            @endif
+{{-- Modal para anular factura --}}
+<div id="cancel-modal" style="display:none;">
+    <div class="modal-overlay" onclick="closeCancelModal()">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <h4>⚠️ Anular factura</h4>
+            <p id="cancel-modal-message">¿Estás seguro de anular esta factura?<br><small style="color:var(--danger)">Esta acción no se puede deshacer.</small></p>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeCancelModal()">Cancelar</button>
+                <form id="cancel-form" method="POST" action="" style="margin:0">
+                    @csrf
+                    @method('PUT')
+                    <input type="hidden" name="status" value="cancelled">
+                    <button type="submit" class="btn btn-danger">Anular factura</button>
+                </form>
+            </div>
         </div>
     </div>
 </div>
 @endsection
+
+@push('scripts')
+<script>
+let currentPage = 1;
+let isLoading = false;
+let searchTimeout = null;
+
+const paymentMethods = {
+    'cash': 'Efectivo',
+    'credit_card': 'Tarjeta',
+    'bank_transfer': 'Transferencia',
+    'credit': 'Crédito'
+};
+
+const statusLabels = {
+    'draft': 'Borrador',
+    'issued': 'Emitida',
+    'cancelled': 'Anulada'
+};
+
+const paymentStatusLabels = {
+    'pending': 'Pendiente',
+    'paid': 'Pagada',
+    'overdue': 'Vencida'
+};
+
+function getMhStatusClass(status) {
+    const classes = {
+        'received': 'received',
+        'rejected': 'rejected',
+        'pending': 'pending-mh'
+    };
+    return classes[status] || 'pending-mh';
+}
+
+function formatDate(dateString) {
+    if (!dateString) return '—';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('es');
+}
+
+function escapeHtml(str) {
+    if (!str) return str;
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function fetchInvoices() {
+    if (isLoading) return;
+    isLoading = true;
+
+    const search = document.getElementById('search-input').value;
+    const invoiceTypeId = document.getElementById('invoice-type-filter').value;
+    const status = document.getElementById('status-filter').value;
+    const paymentStatus = document.getElementById('payment-status-filter').value;
+    const dateFrom = document.getElementById('date-from-filter').value;
+    const dateTo = document.getElementById('date-to-filter').value;
+
+    const params = new URLSearchParams({
+        page: currentPage,
+        search: search,
+        invoice_type_id: invoiceTypeId,
+        status: status,
+        payment_status: paymentStatus,
+        date_from: dateFrom,
+        date_to: dateTo
+    });
+
+
+
+    const tbody = document.getElementById('invoices-tbody');
+    tbody.innerHTML = '<tr><td colspan="10" class="loading">Cargando facturas...</td></tr>';
+
+    fetch(`{{ route('invoices.index') }}?${params.toString()}`, {
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'application/json'
+        }
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('Error en la petición');
+        }
+        return response.json();
+    })
+    .then(data => {
+        renderTable(data.data);
+        renderPagination(data);
+        isLoading = false;
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        tbody.innerHTML = '<tr><td colspan="10" class="loading">Error al cargar datos. Refresca la página.</td></tr>';
+        isLoading = false;
+    });
+}
+
+function renderTable(invoices) {
+    const tbody = document.getElementById('invoices-tbody');
+    
+    if (!invoices || invoices.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="10" class="loading">No se encontraron facturas para hoy</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = invoices.map(inv => {
+        const customerName = inv.customer?.name || '—';
+        const companyName = inv.customer?.company_name;
+        
+        return `
+            <tr>
+                <td><code style="background:var(--surface2);padding:0.2rem 0.4rem;border-radius:4px;color:var(--accent);">${escapeHtml(inv.correlative)}</code></td>
+                <td><span style="color:var(--muted);font-size:0.82rem;">${escapeHtml(inv.invoice_type?.name || '—')}</span></td>
+                <td>
+                    <div style="font-weight:500">${escapeHtml(customerName)}</div>
+                    ${companyName ? `<div style="font-size:0.78rem;color:var(--muted)">${escapeHtml(companyName)}</div>` : ''}
+                </td>
+                <td style="font-family:var(--mono);font-size:0.8rem;">${formatDate(inv.issue_date)}</td>
+                <td><span style="font-size:0.82rem;">${paymentMethods[inv.payment_method] || inv.payment_method}</span></td>
+                <td class="total-amount">$${Number(inv.total_amount).toFixed(2)}</td>
+                <td><span class="badge badge-${inv.status}">${statusLabels[inv.status] || inv.status}</span></td>
+                <td><span class="badge badge-${inv.payment_status}">${paymentStatusLabels[inv.payment_status] || inv.payment_status}</span></td>
+                <td><span class="badge badge-${getMhStatusClass(inv.status_mh)}" style="font-size:0.65rem;">${(inv.status_mh || 'pending').toUpperCase()}</span></td>
+                <td>
+                    <div style="display:flex;gap:0.3rem;">
+                        <a href="/invoices/${inv.id}" class="btn btn-sm btn-secondary" style="padding:0.2rem 0.5rem;">👁️ Ver</a>
+                        ${inv.status === 'draft' ? `<a href="/invoices/${inv.id}/edit" class="btn btn-sm btn-primary" style="padding:0.2rem 0.5rem;">✏️</a>` : ''}
+                        ${inv.status === 'issued' ? `<button onclick="confirmCancel(${inv.id}, '${escapeHtml(inv.correlative).replace(/'/g, "\\'")}')" class="btn btn-sm btn-danger" style="padding:0.2rem 0.5rem;">🚫</button>` : ''}
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function renderPagination(data) {
+    const infoText = document.getElementById('pagination-info-text');
+    const linksDiv = document.getElementById('pagination-links');
+    
+    infoText.textContent = `Mostrando ${data.from || 0} - ${data.to || 0} de ${data.total || 0} registros`;
+    
+    if (data.last_page <= 1) {
+        linksDiv.innerHTML = '';
+        return;
+    }
+    
+    let links = '';
+    
+    if (data.prev_page_url) {
+        links += `<a href="#" data-page="${data.current_page - 1}">← Anterior</a>`;
+    } else {
+        links += `<span style="opacity:0.5;">← Anterior</span>`;
+    }
+    
+    for (let i = 1; i <= data.last_page; i++) {
+        if (i === data.current_page) {
+            links += `<span class="active">${i}</span>`;
+        } else if (Math.abs(i - data.current_page) <= 2 || i === 1 || i === data.last_page) {
+            links += `<a href="#" data-page="${i}">${i}</a>`;
+        } else if (Math.abs(i - data.current_page) === 3) {
+            links += `<span>...</span>`;
+        }
+    }
+    
+    if (data.next_page_url) {
+        links += `<a href="#" data-page="${data.current_page + 1}">Siguiente →</a>`;
+    } else {
+        links += `<span style="opacity:0.5;">Siguiente →</span>`;
+    }
+    
+    linksDiv.innerHTML = links;
+    
+    document.querySelectorAll('#pagination-links a[data-page]').forEach(link => {
+        link.addEventListener('click', (e) => {
+            e.preventDefault();
+            currentPage = parseInt(link.dataset.page);
+            fetchInvoices();
+        });
+    });
+}
+
+function confirmCancel(id, correlative) {
+    const modal = document.getElementById('cancel-modal');
+    const message = document.getElementById('cancel-modal-message');
+    const form = document.getElementById('cancel-form');
+    
+    message.innerHTML = `¿Anular la factura <strong>${escapeHtml(correlative)}</strong>?<br><small style="color:var(--danger)">Esta acción no se puede deshacer.</small>`;
+    form.action = `/invoices/${id}`;
+    modal.style.display = 'block';
+}
+
+function closeCancelModal() {
+    document.getElementById('cancel-modal').style.display = 'none';
+}
+
+function triggerSearch() {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => {
+        currentPage = 1;
+        fetchInvoices();
+    }, 350);
+}
+
+// Event listeners
+document.getElementById('search-input').addEventListener('input', triggerSearch);
+document.getElementById('invoice-type-filter').addEventListener('change', () => { currentPage = 1; fetchInvoices(); });
+document.getElementById('status-filter').addEventListener('change', () => { currentPage = 1; fetchInvoices(); });
+document.getElementById('payment-status-filter').addEventListener('change', () => { currentPage = 1; fetchInvoices(); });
+document.getElementById('date-from-filter').addEventListener('change', () => { currentPage = 1; fetchInvoices(); });
+document.getElementById('date-to-filter').addEventListener('change', () => { currentPage = 1; fetchInvoices(); });
+
+document.getElementById('reset-filters').addEventListener('click', () => {
+    document.getElementById('search-input').value = '';
+    document.getElementById('invoice-type-filter').value = '';
+    document.getElementById('status-filter').value = '';
+    document.getElementById('payment-status-filter').value = '';
+    document.getElementById('date-from-filter').value = '';
+    document.getElementById('date-to-filter').value = '';
+    currentPage = 1;
+    fetchInvoices();
+});
+
+window.onclick = function(event) {
+    if (event.target.classList && event.target.classList.contains('modal-overlay')) {
+        closeCancelModal();
+    }
+};
+
+// Initial load
+fetchInvoices();
+</script>
+@endpush

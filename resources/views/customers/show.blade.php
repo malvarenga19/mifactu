@@ -208,9 +208,6 @@
 
         <div class="detail-card">
             <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-                <a href="{{ route('invoices.create', ['customer_id' => $customer->id]) }}" class="btn btn-primary" style="justify-content: center; width: 100%;">
-                    ➕ Crear factura para este cliente
-                </a>
                 <button type="button" class="btn btn-danger" style="justify-content: center; width: 100%;" onclick="confirmDelete()">
                     🗑️ Eliminar cliente
                 </button>

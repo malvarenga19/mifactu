@@ -94,7 +94,6 @@
                     <div class="form-group">
                         <label class="form-label">Precio de costo</label>
                         <div class="input-group">
-                            <span class="input-group-text">$</span>
                             <input type="number" name="cost_price" step="0.01" value="{{ old('cost_price') }}">
                         </div>
                         @error('cost_price')<div class="invalid-feedback">{{ $message }}</div>@enderror
@@ -102,7 +101,6 @@
                     <div class="form-group">
                         <label class="form-label">Precio de venta *</label>
                         <div class="input-group">
-                            <span class="input-group-text">$</span>
                             <input type="number" name="sale_price" step="0.01" value="{{ old('sale_price') }}" required>
                         </div>
                         @error('sale_price')<div class="invalid-feedback">{{ $message }}</div>@enderror

@@ -53,7 +53,7 @@
                     </div>
                     @if($invoice->generation_code)
                         <div style="font-size:0.7rem;color:var(--muted);margin-top:.3rem;font-family:var(--mono)">
-                            UUID: {{ $invoice->generation_code }}
+                            Codigo de generación: {{ $invoice->generation_code }}
                         </div>
                     @endif
                 </div>

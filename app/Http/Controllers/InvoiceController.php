@@ -2,15 +2,16 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Customer;
+use App\Models\InventoryMovement;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\InvoiceType;
-use App\Models\InventoryMovement;
-use App\Models\Customer;
 use App\Models\Product;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class InvoiceController extends Controller
 {
@@ -20,12 +21,17 @@ class InvoiceController extends Controller
             ->orderByDesc('issue_date')
             ->orderByDesc('id');
 
+        // ✅ FILTRO DE DÍA ACTUAL - solo cuando NO hay filtros de fecha Y NO es AJAX (carga inicial)
+        if (! $request->filled('date_from') && ! $request->filled('date_to')) {
+            $query->whereDate('issue_date', today());
+        }
+
         if ($request->filled('search')) {
             $s = $request->search;
             $query->where(function ($q) use ($s) {
                 $q->where('correlative', 'like', "%$s%")
-                  ->orWhereHas('customer', fn($q2) => $q2->where('name', 'like', "%$s%")
-                      ->orWhere('company_name', 'like', "%$s%"));
+                    ->orWhereHas('customer', fn ($q2) => $q2->where('name', 'like', "%$s%")
+                        ->orWhere('company_name', 'like', "%$s%"));
             });
         }
 
@@ -49,17 +55,21 @@ class InvoiceController extends Controller
             $query->whereDate('issue_date', '<=', $request->date_to);
         }
 
-        $invoices    = $query->paginate(15)->withQueryString();
+        $invoices = $query->paginate(10);
         $invoiceTypes = InvoiceType::all();
+
+        if ($request->ajax()) {
+            return response()->json($invoices);
+        }
 
         return view('invoices.index', compact('invoices', 'invoiceTypes'));
     }
 
     public function create()
     {
-        $customers    = Customer::orderBy('name')->get();
+        $customers = Customer::orderBy('name')->get();
         $invoiceTypes = InvoiceType::all();
-        $products     = Product::orderBy('name')->get();
+        $products = Product::orderBy('name')->get();
 
         return view('invoices.create', compact('customers', 'invoiceTypes', 'products'));
     }
@@ -67,118 +77,158 @@ class InvoiceController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'customer_id'      => 'required|exists:customers,id',
-            'invoice_type_id'  => 'required|exists:invoice_types,id',
-            'issue_date'       => 'required|date',
-            'payment_method'   => 'required|in:cash,credit_card,bank_transfer,credit',
-            'payment_status'   => 'required|in:pending,paid,overdue',
-            'due_date'         => 'nullable|date|after_or_equal:issue_date',
-            'note'             => 'nullable|string',
-            'items'            => 'required|array|min:1',
-            'items.*.product_id'  => 'required|exists:products,id',
+            'customer_id' => 'required|exists:customers,id',
+            'invoice_type_id' => 'required|exists:invoice_types,id',
+            'issue_date' => 'required|date',
+            'payment_method' => 'required|in:cash,credit_card,bank_transfer,credit',
+            'due_date' => 'nullable|date|after_or_equal:issue_date',
+            'note' => 'nullable|string',
+            'credit_days' => 'nullable|integer|min:1|max:365|required_if:payment_method,credit',
+            'items' => 'required|array|min:1',
+            'items.*.product_id' => 'nullable|exists:products,id',
             'items.*.description' => 'required|string',
-            'items.*.quantity'    => 'required|numeric|min:0.01',
-            'items.*.unit_price'  => 'required|numeric|min:0',
-            'items.*.exento'      => 'nullable|boolean',
+            'items.*.quantity' => 'required|numeric|min:0.01',
+            'items.*.unit_price' => 'required|numeric|min:0',
+            'items.*.exento' => 'nullable|boolean',
+            'items.*.non_inventory' => 'nullable|boolean',
         ]);
 
-        // Validar stock ANTES de la transacción para poder redirigir con errores
+        // Calcular payment_status automáticamente
+        $paymentStatus = $request->payment_method === 'credit' ? 'pending' : 'paid';
+
+        // Calcular due_date si es crédito
+        if ($request->payment_method === 'credit' && $request->credit_days) {
+            $dueDate = Carbon::parse($request->issue_date)->addDays((int) $request->credit_days);
+            $request->merge(['due_date' => $dueDate->format('Y-m-d')]);
+        }
+
+        // Validar stock SOLO para productos inventariados (non_inventory = false)
         $stockErrors = [];
-        foreach ($request->items as $item) {
-            $product = Product::find($item['product_id']);
-            if ($product && $product->stock < (int) $item['quantity']) {
-                $stockErrors["items.stock.{$item['product_id']}"] =
-                    "'{$product->name}': stock disponible {$product->stock}, requerido {$item['quantity']}";
+        foreach ($request->items as $key => $item) {
+            $isNonInventory = (bool) ($item['non_inventory'] ?? false);
+
+            if (! $isNonInventory && ! empty($item['product_id'])) {
+                $product = Product::find($item['product_id']);
+                if ($product && $product->stock < (int) $item['quantity']) {
+                    $stockErrors["items.stock.{$key}"] =
+                        "'{$product->name}': stock disponible {$product->stock}, requerido {$item['quantity']}";
+                }
             }
         }
-        if (!empty($stockErrors)) {
+
+        if (! empty($stockErrors)) {
             return back()->withInput()->withErrors($stockErrors);
         }
 
-        DB::transaction(function () use ($request) {
+        DB::transaction(function () use ($request, $paymentStatus) {
             $invoiceType = InvoiceType::lockForUpdate()->findOrFail($request->invoice_type_id);
-            $correlative = $invoiceType->code . '-' . str_pad($invoiceType->last_correlative + 1, 8, '0', STR_PAD_LEFT);
+            $correlative = $invoiceType->code.'-'.str_pad($invoiceType->last_correlative + 1, 8, '0', STR_PAD_LEFT);
             $invoiceType->increment('last_correlative');
 
             $esCF = $invoiceType->code === '01';
 
-            $montoExento  = 0;
-            $montoGravado = 0;
-            $subtotal     = 0;
+            // Variables para cálculos
+            $subtotal = 0; // Suma de todos los precios ingresados
+            $montoExento = 0;
+            $baseImponible = 0; // Base real para cálculos (siempre precio/1.13 para no exentos)
 
             $itemsData = [];
             foreach ($request->items as $item) {
                 $exento = (bool) ($item['exento'] ?? false);
-                $total  = round($item['quantity'] * $item['unit_price'], 2);
+                $total = round($item['quantity'] * $item['unit_price'], 2);
                 $subtotal += $total;
+
                 if ($exento) {
                     $montoExento += $total;
                 } else {
-                    $montoGravado += $esCF ? $total : ($total / 1.13);
+                    // BASE IMPONIBLE REAL: precio / 1.13 (funciona para CF y CCF)
+                    $baseImponible += $total / 1.13;
                 }
-                $itemsData[] = array_merge($item, ['total' => $total, 'exento' => $exento]);
+
+                $itemsData[] = array_merge($item, [
+                    'total' => $total,
+                    'exento' => $exento,
+                    'non_inventory' => (bool) ($item['non_inventory'] ?? false),
+                ]);
             }
 
-            $montoGravado = round($montoGravado, 6);
-            $montoIva     = $esCF
-                ? round($montoGravado * (0.13 / 1.13), 6)
-                : round($montoGravado * 0.13, 6);
-            $subtotal     = round($subtotal, 2);
+            // Redondear base imponible
+            $baseImponible = round($baseImponible, 2);
 
-            $montoGravado = round($montoGravado, 2);
-            $montoIva     = round($montoIva, 2);
+            // Calcular IVA (13% de la base imponible)
+            $montoIva = round($baseImponible * 0.13, 2);
+            $ivaRetenido = 0;
 
-            $customer    = Customer::findOrFail($request->customer_id);
-            $ivaRetenido = $customer->retains_iva ? round($montoIva * 0.01, 2) : 0;
+            // Calcular retención (1% sobre la base imponible)
+            $customer = Customer::findOrFail($request->customer_id);
+            if ($customer->retains_iva && $baseImponible >= 100) {
+                $ivaRetenido = round($baseImponible * 0.01, 2);
+            }
+            // $ivaRetenido = $customer->retains_iva ? round($baseImponible * 0.01, 2) : 0;
 
-            $total = round($subtotal - $ivaRetenido, 2);
+            // Calcular monto_gravado (el que se muestra en la factura) según el tipo
+            if ($esCF) {
+                // CF: El gravado mostrado es el subtotal (con IVA incluido)
+                $montoGravado = $subtotal;
+                // Total a pagar = Subtotal - Retención
+                $totalAmount = round($subtotal - $ivaRetenido, 2);
+            } else {
+                // CCF: El gravado mostrado es la base imponible
+                $montoGravado = $baseImponible;
+                // Total a pagar = (Base + IVA) - Retención
+                $totalAmount = round(($baseImponible + $montoIva) - $ivaRetenido, 2);
+            }
 
             $invoice = Invoice::create([
-                'customer_id'      => $request->customer_id,
-                'invoice_type_id'  => $request->invoice_type_id,
-                'generation_code'  => (string) Str::uuid(),
-                'correlative'      => $correlative,
-                'issue_date'       => $request->issue_date,
-                'payment_method'   => $request->payment_method,
-                'payment_status'   => $request->payment_status,
-                'due_date'         => $request->due_date,
-                'monto_exento'     => $montoExento,
-                'monto_gravado'    => $montoGravado,
-                'monto_iva'        => $montoIva,
-                'iva_retenido'     => $ivaRetenido,
-                'isr_retenido'     => 0,
-                'subtotal'         => $subtotal,
-                'total_amount'     => $total,
-                'status'           => 'draft',
-                'status_mh'        => 'draft',
-                'note'             => $request->note,
+                'customer_id' => $request->customer_id,
+                'invoice_type_id' => $request->invoice_type_id,
+                'generation_code' => (string) Str::uuid(),
+                'correlative' => $correlative,
+                'issue_date' => $request->issue_date,
+                'payment_method' => $request->payment_method,
+                'payment_status' => $paymentStatus,
+                'due_date' => $request->due_date,
+                'credit_days' => $request->payment_method === 'credit' ? (int) $request->credit_days : null,
+                'monto_exento' => $montoExento,
+                'monto_gravado' => $montoGravado,
+                'monto_iva' => $montoIva,
+                'iva_retenido' => $ivaRetenido,
+                'isr_retenido' => 0,
+                'subtotal' => $subtotal,
+                'total_amount' => $totalAmount,
+                'status' => 'draft',
+                'status_mh' => 'draft',
+                'note' => $request->note,
             ]);
 
-            // Guardar ítems y descontar stock
+            // Guardar ítems y descontar stock (solo para inventariados)
             foreach ($itemsData as $item) {
                 InvoiceItem::create([
-                    'invoice_id'  => $invoice->id,
-                    'product_id'  => $item['product_id'],
+                    'invoice_id' => $invoice->id,
+                    'product_id' => $item['non_inventory'] ? null : $item['product_id'],
                     'description' => $item['description'],
-                    'quantity'    => $item['quantity'],
-                    'unit_price'  => $item['unit_price'],
-                    'total'       => $item['total'],
-                    'exento'      => $item['exento'],
+                    'quantity' => $item['quantity'],
+                    'unit_price' => $item['unit_price'],
+                    'total' => $item['total'],
+                    'exento' => $item['exento'],
+                    'non_inventory' => $item['non_inventory'],
                 ]);
 
-                $product     = Product::lockForUpdate()->findOrFail($item['product_id']);
-                $stockBefore = $product->stock;
-                $product->stock -= (int) $item['quantity'];
-                $product->save();
+                if (! $item['non_inventory'] && ! empty($item['product_id'])) {
+                    $product = Product::lockForUpdate()->findOrFail($item['product_id']);
+                    $stockBefore = $product->stock;
+                    $product->stock -= (int) $item['quantity'];
+                    $product->save();
 
-                InventoryMovement::create([
-                    'product_id'   => $product->id,
-                    'type'         => 'salida',
-                    'quantity'     => (int) $item['quantity'],
-                    'note'         => 'Factura: ' . $invoice->correlative,
-                    'stock_before' => $stockBefore,
-                    'stock_after'  => $product->stock,
-                ]);
+                    InventoryMovement::create([
+                        'product_id' => $product->id,
+                        'type' => 'salida',
+                        'quantity' => (int) $item['quantity'],
+                        'note' => 'Factura: '.$invoice->correlative,
+                        'stock_before' => $stockBefore,
+                        'stock_after' => $product->stock,
+                    ]);
+                }
             }
         });
 
@@ -198,9 +248,9 @@ class InvoiceController extends Controller
             return redirect()->route('invoices.show', $invoice)->with('error', 'Solo se pueden editar facturas en borrador.');
         }
 
-        $customers    = Customer::orderBy('name')->get();
+        $customers = Customer::orderBy('name')->get();
         $invoiceTypes = InvoiceType::all();
-        $products     = Product::orderBy('name')->get();
+        $products = Product::orderBy('name')->get();
         $invoice->load('items');
 
         return view('invoices.edit', compact('invoice', 'customers', 'invoiceTypes', 'products'));
@@ -213,141 +263,170 @@ class InvoiceController extends Controller
         }
 
         $request->validate([
-            'customer_id'      => 'required|exists:customers,id',
-            'invoice_type_id'  => 'required|exists:invoice_types,id',
-            'issue_date'       => 'required|date',
-            'payment_method'   => 'required|in:cash,credit_card,bank_transfer,credit',
-            'payment_status'   => 'required|in:pending,paid,overdue',
-            'due_date'         => 'nullable|date|after_or_equal:issue_date',
-            'note'             => 'nullable|string',
-            'items'            => 'required|array|min:1',
-            'items.*.product_id'  => 'required|exists:products,id',
+            'customer_id' => 'required|exists:customers,id',
+            'invoice_type_id' => 'required|exists:invoice_types,id',
+            'issue_date' => 'required|date',
+            'payment_method' => 'required|in:cash,credit_card,bank_transfer,credit',
+            'due_date' => 'nullable|date|after_or_equal:issue_date',
+            'note' => 'nullable|string',
+            'credit_days' => 'nullable|integer|min:1|max:365|required_if:payment_method,credit',
+            'items' => 'required|array|min:1',
+            'items.*.product_id' => 'nullable|exists:products,id',
             'items.*.description' => 'required|string',
-            'items.*.quantity'    => 'required|numeric|min:0.01',
-            'items.*.unit_price'  => 'required|numeric|min:0',
-            'items.*.exento'      => 'nullable|boolean',
+            'items.*.quantity' => 'required|numeric|min:0.01',
+            'items.*.unit_price' => 'required|numeric|min:0',
+            'items.*.exento' => 'nullable|boolean',
+            'items.*.non_inventory' => 'nullable|boolean',
         ]);
 
+        // Calcular payment_status automáticamente
+        $paymentStatus = $request->payment_method === 'credit' ? 'pending' : 'paid';
+
+        // Calcular due_date si es crédito
+        if ($request->payment_method === 'credit' && $request->credit_days) {
+            $dueDate = Carbon::parse($request->issue_date)->addDays((int) $request->credit_days);
+            $request->merge(['due_date' => $dueDate->format('Y-m-d')]);
+        }
+
         // Validar stock ANTES de la transacción.
-        // Para edición: sumar el stock actual de los ítems viejos al disponible
-        // porque dentro de la transacción se revertirán primero.
         $invoice->load('items');
         $stockDisponible = [];
         foreach ($invoice->items as $oldItem) {
-            $stockDisponible[$oldItem->product_id] =
-                ($stockDisponible[$oldItem->product_id] ?? Product::find($oldItem->product_id)->stock)
-                + (int) $oldItem->quantity;
+            if (! $oldItem->non_inventory && $oldItem->product_id) {
+                $stockDisponible[$oldItem->product_id] =
+                    ($stockDisponible[$oldItem->product_id] ?? Product::find($oldItem->product_id)->stock)
+                    + (int) $oldItem->quantity;
+            }
         }
 
         $stockErrors = [];
-        foreach ($request->items as $item) {
-            $pid  = $item['product_id'];
-            $qty  = (int) $item['quantity'];
-            $disp = $stockDisponible[$pid] ?? Product::find($pid)->stock ?? 0;
-            if ($disp < $qty) {
-                $product = Product::find($pid);
-                $stockErrors["items.stock.{$pid}"] =
-                    "'{$product->name}': stock disponible {$disp}, requerido {$qty}";
+        foreach ($request->items as $key => $item) {
+            $isNonInventory = (bool) ($item['non_inventory'] ?? false);
+
+            if (! $isNonInventory && ! empty($item['product_id'])) {
+                $pid = $item['product_id'];
+                $qty = (int) $item['quantity'];
+                $disp = $stockDisponible[$pid] ?? Product::find($pid)->stock ?? 0;
+                if ($disp < $qty) {
+                    $product = Product::find($pid);
+                    $stockErrors["items.stock.{$key}"] =
+                        "'{$product->name}': stock disponible {$disp}, requerido {$qty}";
+                }
             }
         }
-        if (!empty($stockErrors)) {
+
+        if (! empty($stockErrors)) {
             return back()->withInput()->withErrors($stockErrors);
         }
 
-        DB::transaction(function () use ($request, $invoice) {
-            $invoiceType  = InvoiceType::findOrFail($request->invoice_type_id);
-            $esCF         = $invoiceType->code === '01';
+        DB::transaction(function () use ($request, $invoice, $paymentStatus) {
+            $invoiceType = InvoiceType::findOrFail($request->invoice_type_id);
+            $esCF = $invoiceType->code === '01';
 
-            $montoExento  = 0;
-            $montoGravado = 0;
-            $subtotal     = 0;
+            // Variables para cálculos
+            $subtotal = 0;
+            $montoExento = 0;
+            $baseImponible = 0;
 
             $itemsData = [];
             foreach ($request->items as $item) {
                 $exento = (bool) ($item['exento'] ?? false);
-                $total  = round($item['quantity'] * $item['unit_price'], 2);
+                $total = round($item['quantity'] * $item['unit_price'], 2);
                 $subtotal += $total;
+
                 if ($exento) {
                     $montoExento += $total;
                 } else {
-                    $montoGravado += $esCF ? $total : ($total / 1.13);
+                    $baseImponible += $total / 1.13;
                 }
-                $itemsData[] = array_merge($item, ['total' => $total, 'exento' => $exento]);
+
+                $itemsData[] = array_merge($item, [
+                    'total' => $total,
+                    'exento' => $exento,
+                    'non_inventory' => (bool) ($item['non_inventory'] ?? false),
+                ]);
             }
 
-            $montoGravado = round($montoGravado, 6);
-            $montoIva     = $esCF
-                ? round($montoGravado * (0.13 / 1.13), 6)
-                : round($montoGravado * 0.13, 6);
-            $subtotal     = round($subtotal, 2);
+            $baseImponible = round($baseImponible, 2);
+            $montoIva = round($baseImponible * 0.13, 2);
 
-            $montoGravado = round($montoGravado, 2);
-            $montoIva     = round($montoIva, 2);
+            $customer = Customer::findOrFail($request->customer_id);
+            $ivaRetenido = $customer->retains_iva ? round($baseImponible * 0.01, 2) : 0;
 
-            $customer     = Customer::findOrFail($request->customer_id);
-            $ivaRetenido  = $customer->retains_iva ? round($montoIva * 0.01, 2) : 0;
-            $total        = round($subtotal - $ivaRetenido, 2);
+            if ($esCF) {
+                $montoGravado = $subtotal;
+                $totalAmount = round($subtotal - $ivaRetenido, 2);
+            } else {
+                $montoGravado = $baseImponible;
+                $totalAmount = round(($baseImponible + $montoIva) - $ivaRetenido, 2);
+            }
 
             $invoice->update([
-                'customer_id'      => $request->customer_id,
-                'invoice_type_id'  => $request->invoice_type_id,
-                'issue_date'       => $request->issue_date,
-                'payment_method'   => $request->payment_method,
-                'payment_status'   => $request->payment_status,
-                'due_date'         => $request->due_date,
-                'monto_exento'     => $montoExento,
-                'monto_gravado'    => $montoGravado,
-                'monto_iva'        => $montoIva,
-                'iva_retenido'     => $ivaRetenido,
-                'subtotal'         => $subtotal,
-                'total_amount'     => $total,
-                'note'             => $request->note,
+                'customer_id' => $request->customer_id,
+                'invoice_type_id' => $request->invoice_type_id,
+                'issue_date' => $request->issue_date,
+                'payment_method' => $request->payment_method,
+                'payment_status' => $paymentStatus,
+                'due_date' => $request->due_date,
+                'credit_days' => $request->payment_method === 'credit' ? $request->credit_days : null,
+                'monto_exento' => $montoExento,
+                'monto_gravado' => $montoGravado,
+                'monto_iva' => $montoIva,
+                'iva_retenido' => $ivaRetenido,
+                'subtotal' => $subtotal,
+                'total_amount' => $totalAmount,
+                'note' => $request->note,
             ]);
 
             // Revertir stock de ítems anteriores
             foreach ($invoice->items as $oldItem) {
-                $product     = Product::lockForUpdate()->findOrFail($oldItem->product_id);
-                $stockBefore = $product->stock;
-                $product->stock += (int) $oldItem->quantity;
-                $product->save();
+                if (! $oldItem->non_inventory && $oldItem->product_id) {
+                    $product = Product::lockForUpdate()->findOrFail($oldItem->product_id);
+                    $stockBefore = $product->stock;
+                    $product->stock += (int) $oldItem->quantity;
+                    $product->save();
 
-                InventoryMovement::create([
-                    'product_id'   => $product->id,
-                    'type'         => 'entrada',
-                    'quantity'     => (int) $oldItem->quantity,
-                    'note'         => 'Edición de factura (reverso): ' . $invoice->correlative,
-                    'stock_before' => $stockBefore,
-                    'stock_after'  => $product->stock,
-                ]);
+                    InventoryMovement::create([
+                        'product_id' => $product->id,
+                        'type' => 'entrada',
+                        'quantity' => (int) $oldItem->quantity,
+                        'note' => 'Edición de factura (reverso): '.$invoice->correlative,
+                        'stock_before' => $stockBefore,
+                        'stock_after' => $product->stock,
+                    ]);
+                }
             }
 
             $invoice->items()->delete();
 
-            // Guardar nuevos ítems y descontar stock
+            // Guardar nuevos ítems
             foreach ($itemsData as $item) {
                 InvoiceItem::create([
-                    'invoice_id'  => $invoice->id,
-                    'product_id'  => $item['product_id'],
+                    'invoice_id' => $invoice->id,
+                    'product_id' => $item['non_inventory'] ? null : $item['product_id'],
                     'description' => $item['description'],
-                    'quantity'    => $item['quantity'],
-                    'unit_price'  => $item['unit_price'],
-                    'total'       => $item['total'],
-                    'exento'      => $item['exento'],
+                    'quantity' => $item['quantity'],
+                    'unit_price' => $item['unit_price'],
+                    'total' => $item['total'],
+                    'exento' => $item['exento'],
+                    'non_inventory' => $item['non_inventory'],
                 ]);
 
-                $product     = Product::lockForUpdate()->findOrFail($item['product_id']);
-                $stockBefore = $product->stock;
-                $product->stock -= (int) $item['quantity'];
-                $product->save();
+                if (! $item['non_inventory'] && ! empty($item['product_id'])) {
+                    $product = Product::lockForUpdate()->findOrFail($item['product_id']);
+                    $stockBefore = $product->stock;
+                    $product->stock -= (int) $item['quantity'];
+                    $product->save();
 
-                InventoryMovement::create([
-                    'product_id'   => $product->id,
-                    'type'         => 'salida',
-                    'quantity'     => (int) $item['quantity'],
-                    'note'         => 'Edición de factura: ' . $invoice->correlative,
-                    'stock_before' => $stockBefore,
-                    'stock_after'  => $product->stock,
-                ]);
+                    InventoryMovement::create([
+                        'product_id' => $product->id,
+                        'type' => 'salida',
+                        'quantity' => (int) $item['quantity'],
+                        'note' => 'Edición de factura: '.$invoice->correlative,
+                        'stock_before' => $stockBefore,
+                        'stock_after' => $product->stock,
+                    ]);
+                }
             }
         });
 
@@ -365,30 +444,31 @@ class InvoiceController extends Controller
         }
 
         DB::transaction(function () use ($request, $invoice) {
-            // Restaurar stock siempre (se descuenta al crear el borrador)
             $invoice->load('items');
             foreach ($invoice->items as $item) {
-                $product     = Product::lockForUpdate()->findOrFail($item->product_id);
-                $stockBefore = $product->stock;
-                $qty         = (int) $item->quantity;
+                if (! $item->non_inventory && $item->product_id) {
+                    $product = Product::lockForUpdate()->findOrFail($item->product_id);
+                    $stockBefore = $product->stock;
+                    $qty = (int) $item->quantity;
 
-                $product->stock += $qty;
-                $product->save();
+                    $product->stock += $qty;
+                    $product->save();
 
-                InventoryMovement::create([
-                    'product_id'   => $product->id,
-                    'type'         => 'entrada',
-                    'quantity'     => $qty,
-                    'note'         => 'Anulación de factura: ' . $invoice->correlative,
-                    'stock_before' => $stockBefore,
-                    'stock_after'  => $product->stock,
-                ]);
+                    InventoryMovement::create([
+                        'product_id' => $product->id,
+                        'type' => 'entrada',
+                        'quantity' => $qty,
+                        'note' => 'Anulación de factura: '.$invoice->correlative,
+                        'stock_before' => $stockBefore,
+                        'stock_after' => $product->stock,
+                    ]);
+                }
             }
 
             $invoice->update([
-                'status'              => 'cancelled',
+                'status' => 'cancelled',
                 'cancellation_reason' => $request->cancellation_reason,
-                'cancellation_date'   => now()->toDateString(),
+                'cancellation_date' => now()->toDateString(),
             ]);
         });
 

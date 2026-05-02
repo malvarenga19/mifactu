@@ -128,6 +128,41 @@
             color: var(--danger);
             font-weight: 600;
         }
+
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            max-width: 400px;
+            width: 90%;
+            padding: 1.5rem;
+        }
+
+        .modal-content h4 {
+            margin-bottom: 1rem;
+            font-family: var(--mono);
+            color: var(--danger);
+        }
+
+        .modal-content p {
+            margin-bottom: 1.5rem;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 0.5rem;
+            justify-content: flex-end;
+        }
     </style>
 @endpush
 
@@ -144,24 +179,6 @@
                 <input type="text" id="search-input" placeholder="Nombre, código o SKU..." autocomplete="off">
             </div>
             <div class="search-group">
-                <label>📁 Categoría</label>
-                <select id="category-filter">
-                    <option value="">Todas</option>
-                    @foreach($categories as $category)
-                        <option value="{{ $category->id }}">{{ $category->name }}</option>
-                    @endforeach
-                </select>
-            </div>
-            <div class="search-group">
-                <label>📊 Stock</label>
-                <select id="stock-filter">
-                    <option value="">Todos</option>
-                    <option value="low">Stock bajo (mínimo)</option>
-                    <option value="out">Agotados (stock = 0)</option>
-                    <option value="normal">Stock normal</option>
-                </select>
-            </div>
-            <div class="search-group">
                 <label>&nbsp;</label>
                 <button type="button" id="reset-filters" class="btn btn-secondary btn-sm">⟳ Limpiar</button>
             </div>
@@ -172,7 +189,6 @@
             <table class="products-table">
                 <thead>
                     <tr>
-                        <th>Imagen</th>
                         <th>Código</th>
                         <th>Nombre</th>
                         <th>Categoría</th>
@@ -195,10 +211,41 @@
             <div id="pagination-links" class="pagination-links"></div>
         </div>
     </div>
+    {{-- Modal de confirmación para eliminar producto --}}
+    <div id="delete-modal" style="display:none;">
+        <div class="modal-overlay" onclick="closeModal()">
+            <div class="modal-content" onclick="event.stopPropagation()">
+                <h4>⚠️ Confirmar eliminación</h4>
+                <p id="delete-modal-message">¿Eliminar este producto?<br><small style="color:var(--danger)">Esta acción no
+                        se puede deshacer.</small></p>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+                    <form id="delete-form" method="POST" action="" style="margin:0">
+                        @csrf
+                        @method('DELETE')
+                        <button type="submit" class="btn btn-danger">🗑️ Eliminar producto</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @push('scripts')
     <script>
+
+
+
+        // Función para confirmar eliminación
+        function confirmDelete(id, name) {
+            const modal = document.getElementById('delete-modal');
+            const message = document.getElementById('delete-modal-message');
+            const form = document.getElementById('delete-form');
+
+            message.innerHTML = `¿Eliminar el producto <strong>${escapeHtml(name)}</strong>?<br><small style="color:var(--danger)">Esta acción no se puede deshacer.</small>`;
+            form.action = `/products/${id}`;
+            modal.style.display = 'block';
+        }
 
         function escapeHtml(str) {
             if (!str) return str;
@@ -217,14 +264,14 @@
             isLoading = true;
 
             const search = document.getElementById('search-input').value;
-            const category = document.getElementById('category-filter').value;
-            const stock = document.getElementById('stock-filter').value;
+            //const category = document.getElementById('category-filter').value;
+            //const stock = document.getElementById('stock-filter').value;
 
             const params = new URLSearchParams({
                 page: currentPage,
                 search: search,
-                category: category,
-                stock: stock
+                // category: category,
+                //stock: stock
             });
 
             fetch(`{{ route('products.index') }}?${params.toString()}`, {
@@ -273,39 +320,38 @@
                 let equivalentsHtml = '';
                 if (product.equivalents && product.equivalents.length > 0) {
                     equivalentsHtml = `
-                    <div style="display: flex; flex-wrap: wrap; gap: 0.25rem;">
-                        ${product.equivalents.map(equiv =>
+                                            <div style="display: flex; flex-wrap: wrap; gap: 0.25rem;">
+                                                ${product.equivalents.map(equiv =>
                         `<span style="background: var(--surface2); padding: 0.2rem 0.5rem; border-radius: 20px; font-size: 0.7rem;">
-                                ${escapeHtml(equiv.equivalent_code)}
-                            </span>`
+                                                        ${escapeHtml(equiv.equivalent_code)}
+                                                    </span>`
                     ).join('')}
-                    </div>
-                `;
+                                            </div>
+                                        `;
                 } else {
                     equivalentsHtml = '<span class="text-muted" style="font-size:0.75rem;">Sin equivalentes</span>';
                 }
 
                 return `
-                <tr>
-                    <td>
-                        ${product.image_path ?
-                        `<img src="/storage/${product.image_path}" class="product-image" alt="${product.name}" onerror="this.src='https://via.placeholder.com/40?text=No'">` :
-                        `<div style="width:40px;height:40px;background:var(--surface2);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;color:var(--muted);">📷</div>`
-                    }
-                    </td>
-                    <td>${product.code || '—'}</td>
-                    <td>${product.name}</td>
-                    <td>${product.category ? product.category.name : '—'}</td>
-                    <td>$${parseFloat(product.sale_price).toFixed(2)}</td>
-                    <td class="${stockClass}">${stockText}</td>
-                    <td>${equivalentsHtml}</td>
-                    <td style="display: flex; gap: 0.3rem;">
-                        <a href="/products/${product.id}" class="btn btn-sm btn-secondary" style="padding:0.2rem 0.5rem;">👁️</a>
-                        <a href="/products/${product.id}/edit" class="btn btn-sm btn-primary" style="padding:0.2rem 0.5rem;">✏️</a>
-                        <button type="button" class="btn btn-sm btn-danger" style="padding:0.2rem 0.5rem;" onclick="deleteProduct(${product.id})">🗑️</button>
-                    </td>
-                </tr>
-            `;
+                                        <tr>
+                                            <td>${product.code || '—'}</td>
+                                            <td>${product.name} <p>
+                                                <span>${product.description || '—'}</span>
+                                                </td>
+                                            <td>${product.category ? product.category.name : '—'}</td>
+                                            <td>$${parseFloat(product.sale_price).toFixed(2)}</td>
+                                            <td class="${stockClass}">${stockText}</td>
+                                            <td>${equivalentsHtml}</td>
+                                            <td style="display: flex; gap: 0.3rem;">
+                                                <a href="/products/${product.id}" class="btn btn-sm btn-secondary" style="padding:0.2rem 0.5rem;">👁️</a>
+                                                <a href="/products/${product.id}/edit" class="btn btn-sm btn-primary" style="padding:0.2rem 0.5rem;">✏️</a>
+                                                <button type="button" class="btn btn-sm btn-danger" style="padding:0.2rem 0.5rem;" 
+                                    onclick="confirmDelete(${product.id}, '${escapeHtml(product.name).replace(/'/g, "\\'")}')">
+                                    🗑️
+                                </button>
+                                            </td>
+                                        </tr>
+                                    `;
             }).join('');
         }
 
@@ -382,26 +428,32 @@
             }
         }
 
+        function closeModal() {
+            document.getElementById('delete-modal').style.display = 'none';
+        }
+
         // Event listeners
+        let searchTimeout;
         document.getElementById('search-input').addEventListener('input', () => {
-            currentPage = 1;
-            fetchProducts();
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                currentPage = 1;
+                fetchProducts();
+            }, 300);
         });
 
-        document.getElementById('category-filter').addEventListener('change', () => {
-            currentPage = 1;
-            fetchProducts();
-        });
+        // Cerrar modal al hacer clic fuera
+        window.onclick = function (event) {
+            if (event.target.classList && event.target.classList.contains('modal-overlay')) {
+                closeModal();
+            }
+        };
 
-        document.getElementById('stock-filter').addEventListener('change', () => {
-            currentPage = 1;
-            fetchProducts();
-        });
 
         document.getElementById('reset-filters').addEventListener('click', () => {
             document.getElementById('search-input').value = '';
-            document.getElementById('category-filter').value = '';
-            document.getElementById('stock-filter').value = '';
+            //document.getElementById('category-filter').value = '';
+            // document.getElementById('stock-filter').value = '';
             currentPage = 1;
             fetchProducts();
         });

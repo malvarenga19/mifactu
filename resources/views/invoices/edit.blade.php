@@ -393,7 +393,7 @@
 
             if (paymentMethod === 'credit' && creditDays && !isNaN(creditDays) && creditDays > 0 && issueDate) {
                 const date = new Date(issueDate);
-                date.setDate(date.getDate() + creditDays + 1);
+                date.setDate(date.getDate() + creditDays);
                 const year = date.getFullYear();
                 const month = String(date.getMonth() + 1).padStart(2, '0');
                 const day = String(date.getDate()).padStart(2, '0');

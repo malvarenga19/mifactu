@@ -342,6 +342,12 @@
         <a href="{{ route('customers.index') }}" class="{{ request()->routeIs('customers.*') ? 'active' : '' }}">
             <span class="icon">◇</span> Clientes
         </a>
+        <a href="{{ route('suppliers.index') }}" class="{{ request()->routeIs('suppliers.*') ? 'active' : '' }}">
+            <span class="icon">◇</span> Proveedores
+        </a>
+        <a href="{{ route('categories.index') }}" class="{{ request()->routeIs('categories.*') ? 'active' : '' }}">
+            <span class="icon">◇</span> Categorías
+        </a>
         <a href="{{ route('products.index') }}" class="{{ request()->routeIs('products.*') ? 'active' : '' }}">
             <span class="icon">◉</span> Productos
         </a>

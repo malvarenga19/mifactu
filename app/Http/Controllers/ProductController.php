@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Category;
+use App\Models\InventoryMovement;
 use App\Models\Product;
 use App\Models\Supplier;
 use Illuminate\Http\Request;
@@ -12,7 +13,7 @@ class ProductController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Product::with(['category', 'supplier', 'equivalents']);
+        $query = Product::with(['category', 'equivalents']);
 
         if ($request->filled('search')) {
             $search = $request->search;
@@ -26,30 +27,19 @@ class ProductController extends Controller
             });
         }
 
-        // Filtro por categoría
-        if ($request->filled('category_id')) {
-            $query->where('category_id', $request->category_id);
-        }
-
-        // Filtro por stock bajo
-        if ($request->boolean('low_stock')) {
-            $query->whereRaw('stock <= min_stock');
-        }
-
         // Paginación
-        $perPage = $request->input('per_page', 10);
+        $perPage = $request->input('per_page', 5);
         $products = $query->orderBy('id', 'desc')->paginate($perPage);
 
         // Para AJAX
-          // Si es petición AJAX, devolver JSON
-    if ($request->ajax()) {
-        return response()->json($products);
-    }
+        // Si es petición AJAX, devolver JSON
+        if ($request->ajax()) {
+            return response()->json($products);
+        }
 
-        $categories = Category::orderBy('name')->get();
-        $suppliers = Supplier::orderBy('name')->get();
+        $categories = Category::orderBy('name')->get('id', 'name');
 
-        return view('products.index', compact('products', 'categories', 'suppliers'));
+        return view('products.index', compact('products', 'categories'));
     }
 
     public function create()
@@ -83,8 +73,20 @@ class ProductController extends Controller
             $validated['image_path'] = $request->file('image_path')->store('products', 'public');
         }
 
+        $initialStock = $validated['stock'];
+
         // Crear producto
         $product = Product::create($validated);
+        if ($initialStock > 0) {
+            InventoryMovement::create([
+                'product_id' => $product->id,
+                'type' => 'entrada',
+                'quantity' => $initialStock,
+                'note' => 'Entrada inicial',
+                'stock_before' => 0,
+                'stock_after' => $initialStock,
+            ]);
+        }
 
         // Guardar equivalencias
         if ($request->has('equivalent_codes')) {
@@ -175,6 +177,10 @@ class ProductController extends Controller
 
     public function destroy(Product $product)
     {
+        if ($product->inventoryMovements()->exists() && $product->invoiceItems()->exists()) {
+            return redirect()->route('products.index')
+                ->with('error', 'No se puede eliminar el producto porque tiene movimientos de inventario o ha sido vendido en facturas.');
+        }
         // Eliminar imagen
         if ($product->image_path) {
             Storage::disk('public')->delete($product->image_path);
@@ -186,5 +192,4 @@ class ProductController extends Controller
         return redirect()->route('products.index')
             ->with('success', 'Producto eliminado exitosamente.');
     }
-
 }

@@ -148,6 +148,24 @@ class CustomerController extends Controller
      */
     public function destroy(Customer $customer)
     {
-        //
+        // Verificar si tiene facturas relacionadas
+        if ($customer->invoices()->exists()) {
+            $message = 'No se puede eliminar el cliente porque tiene facturas registradas.';
+
+
+            return redirect()
+                ->route('customers.index')
+                ->with('error', $message);
+        }
+
+        $customer->delete();
+
+        $message = 'Cliente eliminado correctamente.';
+
+        
+
+        return redirect()
+            ->route('customers.index')
+            ->with('success', $message);
     }
 }
